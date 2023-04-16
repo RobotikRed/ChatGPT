@@ -23,7 +23,6 @@ import { Utils } from "../util/utils.js";
 import { Bot } from "../bot/bot.js";
 
 
-
 interface ImageGenerationProcessOptions {
 	interaction: CommandInteraction;
 	conversation: Conversation;
@@ -1006,43 +1005,6 @@ export default class ImagineCommand extends Command {
 					if (model.showcases) builder.setImage(model.showcases[0]);
 					return builder;
 				}))
-				.setListenEndMethod("delete")
-				.build();
-
-		/* The user searched for a prompt on Lexica */
-		} else if (action === "search") {
-			/* Which prompt to use as the search query */
-			const query: string = interaction.options.getString("query", true);
-
-			/* Maximum amount of search results to display */
-			const max: number = interaction.options.getInteger("max") ?? 25;
-
-			/* Whether NSFW content can be shown */
-			const nsfw: boolean = interaction.channel && interaction.channel.type === ChannelType.GuildText ? interaction.channel.nsfw : false;
-
-			/* Defer the reply, as this might take a while. */
-			await interaction.deferReply().catch(() => {});
-
-			/* Get the search results. */
-			const results: LexicaImage[] = (await this.bot.lexica.search(query)).images
-				.slice(undefined, max)
-				.filter(image => image.nsfw ? nsfw : true);
-
-			if (results.length === 0) return new Response()
-				.addEmbed(builder => builder
-					.setDescription("No search results were found 🧐")
-					.setColor("Red")
-				)
-				.setEphemeral(true);
-
-			await new PagesBuilder(interaction)
-				.setTitle(`Results for \`${Utils.truncate(query, 85)}\``)
-				.setColor("Aqua")
-				.setPages(results.filter(i => i.prompt && i.prompt.length > 0 && i.prompt.trim().length > 0).map(image => new EmbedBuilder()
-					.setDescription(`${image.prompt}${image.nsfw ? ` 🔞` : ""}`)
-					.setColor(image.nsfw ? "Orange" : "Aqua")
-					.setImage(image.src)
-				))
 				.setListenEndMethod("delete")
 				.build();
 		}

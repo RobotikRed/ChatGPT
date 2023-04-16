@@ -129,7 +129,6 @@ export const IntroductionPages: IntroductionPage[] = [
                     value: `Something that even **OpenAI** doesn't offer yet; with **Premium** almost all available models will be able to **understand** & **view** images you attach to your messages!`
                 }
             ])
-            .setImage("https://media.discordapp.net/attachments/1096768933983424572/1096815577672208404/EjHuYDD.png")
     },
 
     {

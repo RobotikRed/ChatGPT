@@ -13,7 +13,6 @@ import { format } from "../chat/utils/formatter.js";
 import { Response } from "../command/response.js";
 import { Bot, BotStatus } from "../bot/bot.js";
 import ToneCommand from "../commands/tone.js";
-import { SessionState } from "./session.js";
 import { Utils } from "../util/utils.js";
 import { GPTTones } from "./tone.js";
 
@@ -23,7 +22,7 @@ import { GPTAPIError } from "../error/gpt/api.js";
 import { sendTermsNotice } from "../util/terms.js";
 
 /* Emoji to indicate that a generation is running */
-const BOT_GENERATING_EMOJI: EmojiIdentifierResolvable = "<a:orb:1088545392351793232>";
+const BOT_GENERATING_EMOJI: EmojiIdentifierResolvable = "<a:loading:1051419341914132554>";
 
 /* Permissions required by the bot to function correctly */
 const BOT_REQUIRED_PERMISSIONS: { [key: string]: PermissionsString } = {
@@ -238,7 +237,7 @@ export class Generator {
 		else if (message.content.includes(`<@${this.bot.client.user!.id}>`)) return "inMessage";
 		
 		const roles: Role[] = Array.from(message.mentions.roles.values());
-		const mentionedRole: boolean = roles.find(r => !r.editable && ([ "ChatGPT", "Ampere" ].includes(r.name))) != undefined;
+		const mentionedRole: boolean = roles.find(r => !r.editable && ([ "ChatGPT", "Turing" ].includes(r.name))) != undefined;
 
 		if (mentionedRole) return "role";
 		return null;
@@ -324,7 +323,6 @@ export class Generator {
 					.setTitle("Hey there... 👋")
 					.setColor("Yellow")
 					.setDescription("To chat with me, you need to ping the **user** instead of the role. *Then, I'll be able to chat with you normally*.")
-					.setImage("https://media.discordapp.net/attachments/1095064789950136480/1096028352214749314/2bfV5UK.png")
 				)
 			.send(options.message).catch(() => {});
 		}

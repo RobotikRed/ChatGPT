@@ -45,7 +45,7 @@ export default class InfoCommand extends Command {
 
 			{
 				key: "Users 🫂",
-				value: `${users} <:discord:1075134462834249843> — ${(await this.bot.db.client.from(this.bot.db.users.collectionName("users")).select("*", { count: "estimated" })).count ?? 0} <:ampere_round_bolt:1095676185645678612>`
+				value: `${users} 💻 — ${(await this.bot.db.client.from(this.bot.db.users.collectionName("users")).select("*", { count: "estimated" })).count ?? 0} 👤`
 			},
 
 			{

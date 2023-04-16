@@ -22,10 +22,3 @@ You will have to fill out all required fields, or else the bot may not work as e
 Then, run `npm run build` to build the bot.
 
 Once built, you will be able to start the bot using `npm run start`.
-
-## TODO for the rewrite
-- [ ] Continue button
-- [ ] Open Assistant tasks
-- [ ] Redis cache
-- [ ] Better documentation
-- [ ] top.gg rewards
