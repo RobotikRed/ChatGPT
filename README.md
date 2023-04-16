@@ -1,73 +1,31 @@
-# chatgpt-bot
+<h1 align="center"><b>Turing</b> - <i>Discord bot</i></h1>
+<p align="center"><i>The ultimate Discord bot, integrating various AIs</i></p>
 
-A discord bot for interact with ChatGPT
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/U7U5H70V5)
 
-## Setup Guide
+## Requirements
+### *OpenAI*
+To set up this bot yourself, you will need an [**OpenAI API key**](https://platform.openai.com/account/api-keys), with a connected credit card.
 
-1. Clone repository
+### *Replicate*
+To generate & view images, the bot uses various models from **[Replicate](https://replicate.com)**. Head over to [**here**](https://replicate.com/account) to view your API key, once you have created an account & connected a credit card.
 
-```bash
-    git clone https://github.com/MrlolDev/chatgpt-discord-bot.git
-```
+## Create a Discord bot
+You will need to create a Discord bot application [*here*](https://discord.com/developers/applications). The bot does not require any special intents.
+Then, save the token and application ID for the next step.
 
-2. Create supabase project
+## Configuration
+Firstly, copy the configuration example in `src/config.example.json` to `src/config.json`, and follow all the steps inside the file.
+You will have to fill out all required fields, or else the bot may not work as expected or at all.
 
-3. Create supabase tables
+## Building
+**Firstly**, run `npm install` to obtain all the packages & depencies.
+Then, run `npm run build` to build the bot.
 
-Table: accounts
-Fields (name, dataType): (id,uuid), (created_at, timestamp), (email, text), (password, text), (abled, boolean), (totalMessages, numeric), (lastUse, numeric), (key, text)
-In this table it is only required the key(open ai key), abled(true), messages(0) and id property(random UUID).
+Once built, you will be able to start the bot using `npm run start`.
 
-Table: chatsonic
-Fields (name, dataType): (id,uuid), (created_at, timestamp), (key, text)
-
-Table: conversations
-Fields (name, dataType): (id,uuid), (created_at, timestamp), (account, uuid, foreign key points to Account) , (conversation, jsonb), (lastMessage, numeric), (userId, text)
-
-Table: cooldown
-Fields (name, dataType): (id,uuid), (created_at, timestamp), (userId, text), (command, text)
-
-Table: results
-Fields (name, dataType): (id,uuid), (created_at, timestamp), (prompt, text), (provider, text), (result, jsonb), (uses, numeric), (guildId, text)
-
-4. Upload open ai accounts
-
-5. Install dependencies
-
-```
-npm install
-```
-
-6. Create .env
-
-```env
-TOKEN=Your discord bot token https://discord.dev
-CLIENT_ID=Your discord bot id https://discord.dev
-SUPABASE_KEY=Your supabase service role key https://app.supabase.com
-SUPABASE_URL=Your supabase project url https://app.supabase.com
-```
-
-7. Run the bot
-
-```
-npm start
-```
-
-8. Running with auto reload(development mode)
-
-```
-npm run dev
-```
-
-9. Updating code with changes.
-
-```
-npm run git
-```
-
-## TO DO:
-
-- [ ] Embeds --> Future
-- [ ] Top.gg rewards --> Future
-- [ ] Uptime Robot alerts --> Future
+## TODO for the rewrite
+- [ ] Continue button
+- [ ] Open Assistant tasks
+- [ ] Redis cache
+- [ ] Better documentation
+- [ ] top.gg rewards

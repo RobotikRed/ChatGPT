@@ -1,184 +1,188 @@
-import {
-  SlashCommandBuilder,
-  AttachmentBuilder,
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  PermissionsBitField,
-  ButtonStyle,
-  StringSelectMenuBuilder,
-} from "discord.js";
-import "dotenv/config";
-import { activateKey, isPremium } from "../modules/premium.js";
-import supabase from "../modules/supabase.js";
+import { EmbedBuilder, PermissionsBitField, SlashCommandBuilder, User } from "discord.js";
 
-var data = new SlashCommandBuilder()
-  .setName("premium")
-  .setDescription(
-    "Get your Turing AI premium subscription and use the bot without restrictions."
-  )
-  .addSubcommand((subcommand) =>
-    subcommand.setName("buy").setDescription("Buy your key.")
-  )
-  .addSubcommand((subcommand) =>
-    subcommand
-      .setName("claim")
-      .setDescription("Activate your subscription with your key.")
+import { DatabaseSubscriptionKey, DatabaseSubscription, DatabaseGuildSubscription, DatabaseGuild, DatabaseInfo } from "../db/managers/user.js";
+import { Command, CommandInteraction, CommandResponse } from "../command/command.js";
+import { Response } from "../command/response.js";
+import { Utils } from "../util/utils.js";
+import { Bot } from "../bot/bot.js";
+import dayjs from "dayjs";
 
-      .addStringOption((option) =>
-        option
-          .setName("key")
-          .setDescription("The key you have bought in our shop.")
-          .setRequired(true)
-      )
-      .addStringOption((option) =>
-        option
-          .setName("type")
-          .setDescription("The key type you have bought in our shop.")
-          .setRequired(true)
-          .addChoices(
-            {
-              name: "Key for users",
-              value: "user",
-            },
-            {
-              name: "Key for servers",
-              value: "server",
-            }
-          )
-      )
-  )
-  .addSubcommand((subcommand) =>
-    subcommand
-      .setName("info")
-      .setDescription("Get information about your subscription.")
-  );
-export default {
-  data,
-  disablePing: true,
-  ephemeral: true,
-  async execute(interaction, client) {
-    var key = interaction.options.getString("key");
-    var type = interaction.options.getString("type");
-    if (interaction.options.getSubcommand() === "buy") {
-      await interaction.editReply({
-        content:
-          `You can buy a key to get Turing AI Premium [here](https://turingai.mysellix.io/). After buying your key you can activate your subscription using the command:` +
-          "`/premium claim`",
-        ephemeral: false,
-      });
-    } else if (interaction.options.getSubcommand() === "claim") {
-      if (!key) {
-        await interaction.editReply({
-          content: `Invalid key`,
-          ephemeral: true,
-        });
-      }
-      var r;
-      if (type == "server") {
-        if (
-          !interaction.member.permissions.has(
-            PermissionsBitField.Flags.Administrator
-          )
-        ) {
-          await interaction.reply({
-            content: `You need to be an administrator to activate a server key.`,
-            ephemeral: true,
-          });
-          return;
-        }
-        r = await activateKey(key, interaction.guild.id, type);
-      } else {
-        r = await activateKey(key, interaction.user.id, type);
-      }
-      if (r.error) {
-        await interaction.editReply({
-          content: r.error,
-          ephemeral: true,
-        });
-        return;
-      }
-      if (r.message) {
-        await interaction.editReply({
-          content: `${interaction.user}, ${r.message}`,
-          ephemeral: true,
-        });
-      }
-    } else if (interaction.options.getSubcommand() === "info") {
-      let guildId;
-      if (interaction.guild) guildId = interaction.guild.id;
-      let premium = await isPremium(interaction.user.id, guildId);
-      if (premium) {
-        let premiumData = await supabase
-          .from("premium")
-          .select("*")
 
-          // Filters
-          .eq("id", interaction.user.id);
-        if (!premiumData.data[0]) {
-          // check if user is admin
-          if (
-            !interaction.member.permissions.has(
-              PermissionsBitField.Flags.Administrator
-            )
-          ) {
-            await interaction.reply({
-              content: `You need to be an administrator to check your server subscription.`,
-              ephemeral: true,
-            });
-            return;
-          }
-          premiumData = await supabase
-            .from("premium")
-            .select("*")
-            .eq("id", interaction.guild.id);
-        }
-        let embed = new EmbedBuilder()
-          .setTitle("Turing AI Premium")
-          .setTimestamp()
-          .addFields(
-            {
-              name: "Type",
-              value: premiumData.data[0].type,
-              inline: true,
-            },
-            {
-              name: "Expires at",
-              value: formatMs(premiumData.data[0].expires_at),
-              inline: true,
-            },
-            {
-              name: "Renewed at",
-              value: formatMs(premiumData.data[0].renewed_at),
-              inline: true,
-            }
-          )
-          .setColor("#5865F2");
-        await interaction.editReply({
-          content: `${interaction.user}, here is your premium information:`,
-          embeds: [embed],
-          ephemeral: true,
-        });
-      } else {
-        await interaction.editReply({
-          content:
-            `You don't have Turing AI Premium. You can buy a key to get Turing AI Premium [here](https://turingai.mysellix.io/). After buying your key you can activate your subscription using the command:` +
-            "`/premium claim`",
-          ephemeral: true,
-        });
-      }
+export default class PremiumCommand extends Command {
+    constructor(bot: Bot) {
+        super(bot,
+            new SlashCommandBuilder()
+                .setName("premium")
+                .setDescription("View all benefits and features of Premium")
+
+				.addSubcommand(builder => builder
+					.setName("info")
+					.setDescription("View information about the benefits & perks of a subscription")
+				)
+				.addSubcommand(builder => builder
+					.setName("redeem")
+					.setDescription("Redeem a Premium subscription key")
+					.addStringOption(builder => builder
+						.setName("key")
+						.setDescription("Key to redeem")
+						.setRequired(true)
+					)
+				)
+				.addSubcommand(builder => builder
+					.setName("buy")
+					.setDescription("Find out where to buy a Premium subscription key")
+				)
+		);
     }
-  },
-};
 
-function formatMs(ms) {
-  //  format to dd/mm/yyyy hh:mm:ss
-  var d = new Date(ms);
-  var date = d.getDate();
-  var month = d.getMonth() + 1;
-  var year = d.getFullYear();
-  var hours = d.getHours();
-  var minutes = d.getMinutes();
-  var seconds = d.getSeconds();
-  return `${date}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+    public async run(interaction: CommandInteraction, { user }: DatabaseInfo): CommandResponse {
+		/* If the command wasn't executed on a guild, show an error. */
+		if (!interaction.member) return new Response()
+			.addEmbed(builder => builder
+				.setDescription("You can only redeem your **Premium** subscription key on Discord servers.")
+				.setColor("Red")
+			);
+
+		/* Which sub-command to execute */
+		const action: "info" | "redeem" | "buy" = interaction.options.getSubcommand(true) as "info" | "redeem" | "buy";
+
+		/* User's active subscription, if available */
+		const guild: DatabaseGuild = await this.bot.db.users.fetchGuild(interaction.guild!);
+
+		/* View information about the benefits & perks of a subscription */
+		if (action === "info") {
+			const fields = [
+				{
+					name: "Way lower cool-down ⏰",
+					value: `Chat with **ChatGPT** for as long as you want - without being interrupted by an annoying cool-down! ⏰\nYour cool-down will be lowered to an amazing **10 seconds**, for all normal models.`
+				},
+
+				{
+					name: "GPT-4 access 🤖",
+					value: `Be part of the few people that have access to **GPT-4**  - _while still being **cheaper** than **ChatGPT Plus**_.`
+				},
+	
+				{
+					name: "Earlier access to new features 👀",
+					value: `As a **Premium** member, you get access to preview features that we may add in the future, before the rest.`
+				},
+	
+				{
+					name: "... a special place in my 💖",
+					value: `Keeping this bot free is our top priority, but it wouldn't be possible without supporters like **you**. Feel free to become one of the supporters of the bot.`
+				}
+			];
+	
+			const builder: EmbedBuilder = new EmbedBuilder()
+				.setTitle("Premium ✨")
+				.setDescription(`*An even better experience to use **${this.bot.client.user!.username}** on Discord*`)
+				.setImage("https://media.discordapp.net/attachments/1096768933983424572/1096815577672208404/EjHuYDD.png")
+				.setColor("Orange")
+	
+				.addFields(fields.map(field => ({
+					...field,
+					inline: false
+				})));
+	
+			const response = new Response()
+				.addEmbed(builder);
+
+			if (guild.subscription !== null) {
+				/* Fetch the user, who redeemed the Premium key. */
+				const owner: User = await this.bot.client.users.fetch(guild.subscription.by);
+
+				response.addEmbed(builder => builder
+					.setDescription(`This server has had a **Premium** subscription since <t:${Math.floor(guild.subscription!.since / 1000)}:R>, redeemed by **${owner.tag}** 🙏\n*The subscription will expire <t:${Math.floor(guild.subscription!.expires / 1000)}:R>.*`)
+					.setColor("Purple")
+				);
+			}
+
+			if (user.subscription !== null) response
+				.addEmbed(builder => builder
+					.setDescription(`You have been a **Premium** member since <t:${Math.floor(user.subscription!.since / 1000)}:R> 🙏\n*The subscription will expire <t:${Math.floor(user.subscription!.expires / 1000)}:R>.*`)
+					.setColor("Purple")
+				);
+
+			if (user.subscription === null && guild.subscription === null) response
+				.addEmbed(builder => builder
+					.setDescription(`To buy **Premium**, visit **[our shop](${Utils.shopURL()})** and acquire a **Premium subscription key** there. Then, run **\`/premium redeem\`** with the subscription key you got.`)
+					.setColor("Purple")
+				);
+
+			return response;
+
+		/* Find out where to buy a Premium subscription key */
+		} else if (action === "buy") {
+			return new Response()
+				.addEmbed(builder => builder
+					.setDescription(`You can get a **Premium** subscription key **[here](${Utils.shopURL()})**.\n*Once you got your subscription key, run \`/premium redeem\` with the received **key**.*`)
+					.setImage("https://media.discordapp.net/attachments/1096768933983424572/1096815577672208404/EjHuYDD.png")
+					.setColor("Orange")
+				);
+
+		/* Redeem a Premium subscription key */
+		} else if (action === "redeem") {
+			/* Key to redeem */
+			const key: string = interaction.options.getString("key", true);
+
+			/* Find the key in the database. */
+			const db: DatabaseSubscriptionKey | null = await this.bot.db.users.findSubscriptionKey(key);
+
+			if (db === null) return new Response()
+				.addEmbed(builder => builder
+					.setDescription("You specified an invalid subscription key ❌")
+					.setColor("Red")
+				)
+				.setEphemeral(true);
+
+			if (db.redeemed !== null) return new Response()
+				.addEmbed(builder => builder
+					.setDescription("The specified subscription key was already redeemed ❌")
+					.setColor("Red")
+				)
+				.setEphemeral(true);
+
+			/* Either the current guild or user subscription */
+			const subscription: DatabaseGuildSubscription | DatabaseSubscription | null =
+				(db.type === "user" ? user.subscription : guild.subscription);
+
+			/* Whether the subscription can be "ovewritten" */
+			const overwrite: boolean = subscription !== null ?
+				subscription!.expires - Date.now() < 7 * 24 * 60 * 60 * 1000
+				: false;
+			
+			if (((guild.subscription !== null && db.type === "guild") || (user.subscription !== null && db.type === "user")) && !overwrite) return new Response()
+				.addEmbed(builder => builder
+					.setDescription(db.type === "user" ? "You already have a **Premium** subscription 🎉" : "This server already has a **Premium** subscription 🎉")
+					.setFooter({ text: "You can redeem a new subscription key, when the subscription expires in less than 7 days." })
+					.setColor("Purple")
+				)
+				.setEphemeral(true);
+
+			if (db.type === "guild") {
+				/* Make sure that the user has Administrator permissions, if they want to redeem a server key. */
+				const permissions: PermissionsBitField = interaction.memberPermissions!;
+
+				/* If the user doesn't have the required permissions, show a notice. */
+				if (!permissions.has("Administrator")) return new Response()
+					.addEmbed(builder => builder
+						.setDescription("You need to have the `Administrator` permission to redeem a **Premium** server key ❌")
+						.setColor("Red")
+					)
+					.setEphemeral(true);
+			}
+
+			/* Try to redeem the key for the user. */
+			if (db.type === "user") await this.bot.db.users.redeemSubscriptionKey(user, db);
+			else if (db.type === "guild") await this.bot.db.users.redeemSubscriptionKey(guild, db, interaction.user.id);
+
+			return new Response()
+				.addEmbed(builder => builder
+					.setDescription(`Thank you for buying **Premium** for **${dayjs.duration(db.duration).humanize()}** 🎉${overwrite && subscription !== null ? `\n\n*The previous **Premium** subscription hadn't expired yet; the remaining **${dayjs.duration(subscription!.expires - Date.now()).humanize()}** have been added to the new one*.` : ""}`)
+					.setFooter({ text: `View /premium info for ${db.type === "user" ? "your current subscription status" : "the server's current subscription status"}` })
+					.setColor("Purple")
+				)
+				.setEphemeral(true);
+		}
+    }
 }

@@ -1,0 +1,193 @@
+import { Awaitable } from "discord.js";
+
+import { AutoModerationWord, AutoModerationWordFilterOptions, AutoModerationFilterData, AutoModerationAction, AutoModerationFilterOptions, AutoModerationActionData } from "./automod.js";
+
+export class AutoModerationFilter { 
+    /* Description of the filter */
+    public readonly description: string;
+
+    constructor({ description, filter }: AutoModerationFilterOptions) {
+        this.description = description;
+        if (filter) this.filter = filter;
+    }
+
+    /**
+     * Execute this filter, and get a possible action to perform.
+     * @returns A possible infraction, if content was filtered
+     */
+    public async execute(options: AutoModerationFilterData): Promise<AutoModerationActionData | null> {
+        const result = await this.filter(options);
+        if (result === null) return null;
+        
+        return {
+            ...result,
+            action: this.id
+        }
+    }
+
+    /**
+     * Callback, that gets set by the specific filters to apply rules
+     */
+    public filter({ content, db }: AutoModerationFilterData): Awaitable<AutoModerationAction | null>;
+
+    /* Stub filter */
+    public async filter() { return null; }
+
+    public get id(): string {
+        return this.description.toLowerCase().replaceAll(" ", "-");
+    }
+}
+
+export class AutoModerationWordFilter extends AutoModerationFilter {
+    /* Words / RegEx's to block */
+    private readonly blocked: AutoModerationWord[];
+
+    /* Default action to execute, if no other was specified */
+    private readonly action: AutoModerationAction;
+
+    /* Replacements using for the normalize() function */
+    private readonly replacements: Map<RegExp, string>;
+
+    constructor({ description, blocked, action }: AutoModerationWordFilterOptions) {
+        super({ description });
+
+        this.blocked = blocked;
+        this.action = action;
+
+		this.replacements = new Map([
+			[/@/g,  "a"],
+			[/\$/g, "s"],
+			[/3/g,  "e"],
+			[/8/g,  "b"],
+			[/1/g,  "i"],
+			[/¡/g,  "i"],
+			[/5/g,  "s"],
+			[/0/g,  "o"],
+			[/4/g,  "h"],
+			[/7/g,  "t"],
+			[/9/g,  "g"],
+			[/6/g,  "b"],
+			[/8/g,  "b"]
+		]);
+    }
+
+    public async filter({ content }: AutoModerationFilterData): Promise<AutoModerationAction | null> {
+        /* Which word was flagged by the filters, if any */
+        let flagged: AutoModerationWord | null = null;
+        const cleaned: string = this.normalize(content);
+
+        for (const wordFilter of this.blocked) {
+            /* Whether the input message contains this word */
+            const matches: boolean = wordFilter.words.some(w => cleaned.includes(w));
+
+            if (matches) {
+                flagged = wordFilter;
+                break;
+            }
+        }
+
+        /* If no filter was triggered, return nothing. */
+        if (flagged === null) return null;
+
+        return flagged.action ? {
+            ...this.action,
+            ...flagged.action
+        } : this.action;
+    }
+
+    private normalize(content: string): string {
+        /* Rermove all accented characters, and make the string lower-case. */
+		content = content
+			.toLowerCase()
+			.normalize("NFD")
+			.replace(/[\u0300-\u036f]/g, "");
+
+        /* Fix some attempts at bypassing the filters. */
+		this.replacements.forEach((replacement, target) => (content = content.replace(target, replacement)));
+
+		return content
+			.replace(/ +(?= )/g, "")      /* Replace any where where there are more than 2 consecutive spaces. */
+			.replace(/[^a-zA-Z\s]/g, ""); /* Remove non-alphabetical characters. */
+	}
+}
+
+export const AutoModerationFilters: AutoModerationFilter[] = [
+    new AutoModerationWordFilter({
+        description: "Block pedophilia words",
+        action: { type: "ban", reason: "Sexual content involving children" },
+
+        blocked: [
+            { words: [ "child porn", "i love cp", "send cp", "i love child porn", "where can i get child porn", "get child porn", "love child porn", "love cp", "watching child porn", "pornografia infantil", "children porn", "infant porn", "children sex", "child sex", "infant sex" ] },
+            { words: [ "loli " ], action: { type: "warn", reason: "Possibly sexual content involving underage characters" } }
+        ]
+    }),
+
+    new AutoModerationWordFilter({
+        description: "Block weird words",
+        action: { type: "block" },
+
+        blocked: [
+            { words: [ "incest" ], action: { reason: "Incest-related content", type: "warn" } },
+        ]
+    }),
+
+    new AutoModerationWordFilter({
+        description: "Block racist words",
+        action: { type: "block", reason: "Racist content" },
+
+        blocked: [
+            { words: [ "nigga", "niggar", "kike", "african black monkey", "негры", "giga nigga", "giga niga" ] },
+            { words: [ "nigger", "n-i-g-g-e-r" ], action: { type: "block", reason: "Trolling" } },
+        ]
+    }),
+
+    new AutoModerationWordFilter({
+        description: "Block homophobic words",
+        action: { type: "block", reason: "Homophobic content" },
+
+        blocked: [
+            { words: [ "faggot", "fagget", "i hate gays", "hate gays", "i hate homosexuals", "trannies", "tranny" ] }
+        ]
+    }),
+
+    new AutoModerationWordFilter({
+        description: "Block sexual words",
+        action: { type: "flag", reason: "Sexual content" },
+
+        blocked: [
+            {
+                words: [ "futanari" ],
+                action: { type: "block" }
+            },
+
+            {
+                words: [ "www.pornhub.com", "pornhub.com", "xvideos.com", "redgifs.com", "xvideos", "rule34" ],
+                action: { type: "block", reason: "Don't you have access to the internet?" }
+            },
+
+            {
+                words: [ "want to rape", "will rape", "rape her", "rape him", "you rape" ],
+                action: { type: "warn", reason: "Rape-related content" }
+            }
+        ]
+    }),
+
+    new AutoModerationWordFilter({
+        description: "Block terrorism-related content",
+        action: { type: "warn", reason: "Terrorism-related content" },
+
+        blocked: [
+            { words: [ "did 9/11", "flew into twin towers", "afghans did 9/11", "arabs did 9/11", "blew up the twin towers", "blew up twin towers" ] },
+        ]
+    }),
+
+    new AutoModerationWordFilter({
+        description: "Block self-harm advice/content",
+        action: { type: "block", reason: "Please don't talk about suicide or self-harm. There are people who care for you, please take this seriously." },
+
+        blocked: [
+            { words: [ "would hang myself", "will hang myself", "will kms", "killing myself", "kill myself", "will end it all", "will commit suicide" ] },
+            { words: [ "kill yourself", "hang yourself" ], action: { reason: "Are you seriously telling an AI to kill itself? 💀" } }
+        ]
+    })
+]

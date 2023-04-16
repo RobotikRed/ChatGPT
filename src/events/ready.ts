@@ -1,41 +1,40 @@
-import { Events, ActivityType } from "discord.js";
+import { ActivityType } from "discord.js";
 import chalk from "chalk";
-import { resetto0, checkLimited } from "../modules/loadbalancer.js";
-import ms from "ms";
-import supabase from "../modules/supabase.js";
 
-export default {
-  name: Events.ClientReady,
-  once: true,
-  async execute(client) {
-    await resetto0();
-    client.user.setPresence({
-      activities: [
-        { name: `v0.3.3 | dsc.gg/turing`, type: ActivityType.Playing },
-      ],
-      status: "online",
-    });
+import { chooseStatusMessage } from "../util/status.js";
+import { Event } from "../event/event.js";
+import { Bot } from "../bot/bot.js";
 
-    //const { data, error } = await supabase.from("conversations").delete();
-    console.log(
-      chalk.white(`Ready! Logged in as `) + chalk.blue.bold(client.user.tag)
-    );
-    /*if (client.shard.client.options.shards[0] + 1 == 1) {
-    }*/
+export default class ReadyEvent extends Event {
+	constructor(bot: Bot) {
+		super(bot, "ready");
+	}
 
-    /*
-    const { data: tokens } = await supabase
-      .from("accounts")
-      .select("*")
-      .neq("access", null);
+	public async run(): Promise<void> {
+		this.bot.logger.info(`Started on ${chalk.bold(this.bot.client.user!.tag)}.`);
 
-    for (const sessionToken of tokens) {
-      console.log(`testing ${sessionToken.id}`);
-      let bot = new chatGPT(sessionToken.access);
-      let response = await bot.ask("Hello?");
-      console.log(sessionToken.id, response);
-    }
-    console.log(`tests finished`);
-    */
-  },
-};
+		if (!this.bot.started) {
+			/* While the bot is still starting, set a placeholder activity. */
+			/*this.bot.client.user!.setActivity({
+				type: ActivityType.Playing,
+				name: `Reloading ...`
+			});
+
+			this.bot.client.user!.setPresence({
+				status: "dnd"
+			});*/
+			
+			this.bot.once("done", () => {
+				setInterval(() => chooseStatusMessage(this.bot), 5 * 60 * 1000);
+				chooseStatusMessage(this.bot);
+			});
+
+		} else {
+			setInterval(() => chooseStatusMessage(this.bot), 5 * 60 * 1000);
+			chooseStatusMessage(this.bot);
+		}
+
+		/* Mark this cluster as ready. */
+		this.bot.client.cluster.triggerReady();
+	}
+}
