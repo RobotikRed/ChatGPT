@@ -1,5 +1,4 @@
 import { ActionRowBuilder, AttachmentBuilder, AutocompleteInteraction, ButtonBuilder, ButtonInteraction, ButtonStyle, ChannelType, EmbedBuilder, EmbedField, InteractionReplyOptions, SlashCommandBuilder } from "discord.js";
-import { Image as LexicaImage } from "lexica-api";
 
 import { Command, CommandInteraction, CommandOptionChoice, CommandResponse } from "../command/command.js";
 import { Response, ResponseType } from "../command/response.js";
@@ -275,27 +274,10 @@ export default class ImagineCommand extends Command {
 					.setName("models")
 					.setDescription("View a list of all available Stable Diffusion models")
 				)
-
-				.addSubcommand(builder => builder
-					.setName("search")
-					.setDescription("Search for AI-generated images on Lexica")
-					.addStringOption(builder => builder
-						.setName("query")
-						.setDescription("Search query to search for")
-						.setRequired(true)
-						.setMaxLength(100)
-					)
-					.addIntegerOption(builder => builder
-						.setName("count")
-						.setDescription("How many images to generate")
-						.setRequired(false)
-						.setMinValue(1)
-						.setMaxValue(4)
-					)
-				)
 		, { cooldown: {
 			Free: 60 * 1000,
-			GuildPremium: 30 * 1000,
+			Voter: 40 * 1000,
+			GuildPremium: 25 * 1000,
 			UserPremium: 10 * 1000
 		} });
     }
@@ -684,7 +666,7 @@ export default class ImagineCommand extends Command {
 			}
 
 			/* Increment the user's usage. */
-			await this.bot.db.users.incrementInteractions(db.user);
+			await this.bot.db.users.incrementInteractions(db.user, "images");
 
 			if (!usable) {
 				await conversation.setImageGenerationStatus(false);
