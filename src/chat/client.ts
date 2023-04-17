@@ -91,14 +91,17 @@ ${conversation.tone.prompt!}
 `
 }
 
-const OtherPrompts = {
+export const OtherPrompts = {
     /* This prompt is added if the user attaches an image to the message, in order to make it easier for the model to understand */
     ImageAttachments:
 `
 When sending a message, users can attach images using the format '[Image #<index> = <file name>: "<brief description of the image>". [optional: "Detected text: "..."]]'.
 Pretend you can view the images based on their descriptions. Refer to them as "attached image" and prioritize any detected text from the image.
 Use logic and common sense to understand the image. You must act as if you can see the images.
-`.trim()
+`.trim(),
+
+    /* This prompt continues a cut-off message */
+    Continue: "Continue the message where you left off."
 }
 
 

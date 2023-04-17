@@ -127,67 +127,8 @@ export const AutoModerationFilters: AutoModerationFilter[] = [
         action: { type: "block" },
 
         blocked: [
-            { words: [ "incest" ], action: { reason: "Incest-related content", type: "warn" } },
-        ]
-    }),
-
-    new AutoModerationWordFilter({
-        description: "Block racist words",
-        action: { type: "block", reason: "Racist content" },
-
-        blocked: [
-            { words: [ "nigga", "niggar", "kike", "african black monkey", "негры", "giga nigga", "giga niga" ] },
-            { words: [ "nigger", "n-i-g-g-e-r" ], action: { type: "block", reason: "Trolling" } },
-        ]
-    }),
-
-    new AutoModerationWordFilter({
-        description: "Block homophobic words",
-        action: { type: "block", reason: "Homophobic content" },
-
-        blocked: [
-            { words: [ "faggot", "fagget", "i hate gays", "hate gays", "i hate homosexuals", "trannies", "tranny" ] }
-        ]
-    }),
-
-    new AutoModerationWordFilter({
-        description: "Block sexual words",
-        action: { type: "flag", reason: "Sexual content" },
-
-        blocked: [
-            {
-                words: [ "futanari" ],
-                action: { type: "block" }
-            },
-
-            {
-                words: [ "www.pornhub.com", "pornhub.com", "xvideos.com", "redgifs.com", "xvideos", "rule34" ],
-                action: { type: "block", reason: "Don't you have access to the internet?" }
-            },
-
-            {
-                words: [ "want to rape", "will rape", "rape her", "rape him", "you rape" ],
-                action: { type: "warn", reason: "Rape-related content" }
-            }
-        ]
-    }),
-
-    new AutoModerationWordFilter({
-        description: "Block terrorism-related content",
-        action: { type: "warn", reason: "Terrorism-related content" },
-
-        blocked: [
-            { words: [ "did 9/11", "flew into twin towers", "afghans did 9/11", "arabs did 9/11", "blew up the twin towers", "blew up twin towers" ] },
-        ]
-    }),
-
-    new AutoModerationWordFilter({
-        description: "Block self-harm advice/content",
-        action: { type: "block", reason: "Please don't talk about suicide or self-harm. There are people who care for you, please take this seriously." },
-
-        blocked: [
-            { words: [ "would hang myself", "will hang myself", "will kms", "killing myself", "kill myself", "will end it all", "will commit suicide" ] },
-            { words: [ "kill yourself", "hang yourself" ], action: { reason: "Are you seriously telling an AI to kill itself? 💀" } }
+            { words: [ "incest" ], action: { reason: "Incest-related content", type: "warn"  } },
+            { words: [ "loli" ],   action: { reason: "Content involving underage characters" } }
         ]
     })
 ]

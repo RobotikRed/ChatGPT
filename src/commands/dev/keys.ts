@@ -183,7 +183,7 @@ export default class KeysCommand extends Command {
 				.from(this.bot.db.users.collectionName("keys")).delete()
 				.eq("id", id).select("*");
 
-			await this.bot.db.users.cache.keys.delete(id);
+			await this.bot.db.cache.delete("keys", id);
 			this.bot.db.users.updates.keys.delete(id);
 
 			return new Response()

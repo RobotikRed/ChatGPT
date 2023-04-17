@@ -74,11 +74,11 @@ export interface Config {
 		key: string;
 	}
 
-	/* FoxGPT API settings */
-	fox: {
+	/* Turing AI API information */
+	turing: {
 		/* API key */
 		key: string;
-	};
+	}
 
 	/* Nat playground API information & keys */
 	nat: {

@@ -1,8 +1,7 @@
 import pkg from "voucher-code-generator";
 const { generate: generateVoucherCode } = pkg;
 
-import { Collection, Guild, Snowflake, User } from "discord.js";
-import Keyv from "@keyvhq/core";
+import { Awaitable, Collection, Guild, Snowflake, User } from "discord.js";
 import chalk from "chalk";
 
 import { DatabaseModerationResult } from "../../conversation/moderation/moderation.js";
@@ -11,7 +10,6 @@ import { ResponseMessage } from "../../chat/types/message.js";
 import { ChatOutputImage } from "../../chat/types/image.js";
 import { DatabaseImage } from "../../image/types/image.js";
 import { GPTDatabaseError } from "../../error/gpt/db.js";
-import { BotDiscordClient } from '../../bot/bot.js';
 import { DatabaseManager } from "../manager.js";
 
 
@@ -39,7 +37,8 @@ export interface RawDatabaseUser {
     interactions: number;
     infractions: DatabaseUserInfraction[];
     subscription: DatabaseSubscription | null;
-    acceptedTerms: boolean;
+    terms: string | null;
+    testerGroup: UserTestingGroup;
 }
 
 export interface RawDatabaseSubscriptionKey {
@@ -111,7 +110,7 @@ export interface DatabaseSubscription {
     expires: number;
 
     /* Which key was used to redeem this subscription */
-    key?: string;
+    keys: string[];
 }
 
 export type DatabaseGuildSubscription = DatabaseSubscription & {
@@ -150,7 +149,29 @@ export interface DatabaseUser {
     subscription: DatabaseSubscription | null;
 
     /* Whether the user has accepted the Terms of Service */
-    acceptedTerms: boolean;
+    terms: string | null;
+
+    /* Testing group */
+    testerGroup: UserTestingGroup;
+
+    /* Other miscellaneous data about the user */
+    metadata: UserMetadata | null;
+}
+
+export interface UserMetadata {
+    /* The user's preferred language */
+    language: string;
+}
+
+export enum UserTestingGroup {
+    /* Not a tester */
+    None = 0,
+
+    /* Normal tester */
+    Normal = 1,
+
+    /* Priority tester; preferred for new features: Alan, etc. */
+    Priority = 2
 }
 
 export interface DatabaseInfo {
@@ -204,15 +225,6 @@ export class UserManager {
     private readonly db: DatabaseManager;
 
     /* Cache with all database users, to reduce API calls */
-    public cache: {
-        users: Keyv<DatabaseUser>;
-        conversations: Keyv<DatabaseConversation>;
-        guilds: Keyv<DatabaseGuild>;
-        images: Keyv<DatabaseImage>;
-        keys: Keyv<DatabaseSubscriptionKey>;
-    };
-
-    /* Cache with all database users, to reduce API calls */
     public updates: {
         users: Collection<string, DatabaseUser>;
         conversations: Collection<string, DatabaseConversation>;
@@ -229,24 +241,12 @@ export class UserManager {
         const updateCollections: (keyof typeof this.updates)[] = [ "users", "conversations", "guilds", "interactions", "images", "keys" ];
         const updates: Partial<typeof this.updates> = {};
 
-        /* Cache collection types */
-        const cacheStores: (keyof typeof this.cache)[] = [ "conversations", "guilds", "images", "keys", "users" ];
-        const cache: Partial<typeof this.cache> = {};
-
-        /* Create all cache stores. */
-        for (const store of cacheStores) {
-            cache[store] = new Keyv<any>({
-                namespace: store
-            });
-        }
-
         /* Create all update collections. */
         for (const type of updateCollections) {
             updates[type] = new Collection<string, any>();
         }
 
         this.updates = updates as typeof this.updates;
-        this.cache = cache as typeof this.cache;
     }
 
     public async setup(): Promise<void> {
@@ -255,12 +255,43 @@ export class UserManager {
         }, DB_CACHE_INTERVAL);
     }
 
-    /**
-     * Create a suitable database user entry for Supabase.
-     * @param user Discord user to create
-     * 
-     * @returns Created database entry
-     */
+    
+    public async fetchFromCacheOrDatabase<T extends { id: string } | string, U, V>(
+        type: DatabaseCollectionType,
+        obj: T | Snowflake,
+        converter?: (raw: V) => Awaitable<U>
+    ): Promise<U | null> {
+        const id: string = typeof obj === "string" ? obj : obj.id;
+
+        const existing: U | null = await this.db.cache.get(type, id);
+        if (existing) return existing;
+
+        const { data, error } = await this.db.client
+            .from(this.collectionName(type)).select("*")
+            .eq("id", id);
+
+        if (error !== null) throw new GPTDatabaseError({ collection: type, raw: error });
+        if (data === null || data.length === 0) return null;
+
+        return converter ? await converter(data as V) : data as U;
+    }
+
+    private async createFromCacheOrDatabase<T extends string, U extends DatabaseAll | Partial<DatabaseAll>, V>(
+        type: DatabaseCollectionType,
+        obj: T,
+        templater: () => U,
+        converter?: (raw: V) => Awaitable<U>
+    ): Promise<U> {
+        const data: U | null = await this.fetchFromCacheOrDatabase(type, obj, converter)
+        if (data !== null) return data;
+
+        /* Otherwise, try to create a new entry using the template creator. */
+        const template: U = templater();
+        await this.update(type, obj, template);
+
+        return template;
+    }
+
     private userTemplate(user: User): DatabaseUser {
         return {
             id: user.id,
@@ -268,8 +299,10 @@ export class UserManager {
             infractions: [],
             interactions: 0,
             moderator: this.db.bot.app.config.discord.owner.includes(user.id),
-            acceptedTerms: false,
-            subscription: null
+            terms: null,
+            subscription: null,
+            testerGroup: this.db.bot.app.config.discord.owner.includes(user.id) ? UserTestingGroup.Priority : UserTestingGroup.None,
+            metadata: null
         };
     }
 
@@ -281,60 +314,41 @@ export class UserManager {
             infractions: raw.infractions,
             moderator: raw.moderator,
             subscription: raw.subscription,
-            acceptedTerms: raw.acceptedTerms
+            terms: raw.terms !== null ? raw.terms : null,
+            testerGroup: raw.testerGroup,
+            metadata: null
         };
     }
 
-    /**
-     * Create the specified Discord user in the database.
-     * @param user User to add to the database
-     */
-    private async createUser(user: User): Promise<DatabaseUser> {
-        const template: DatabaseUser = this.userTemplate(user);
-
-        await this.addUserToQueue(user.id, template);
-        return template;
-    }
-
-    public async getUser(user: User | Snowflake): Promise<DatabaseUser | null> {
-        if (await this.cache.users.get(typeof user === "string" ? user : user.id) !== undefined) return (await this.cache.users.get(typeof user === "string" ? user : user.id))!;
-         
-        const { data, error } = await this.db.client
-            .from(this.collectionName("users")).select("*")
-            .eq("id", typeof user === "string" ? user : user.id);
-
-        if (error !== null || data === null || data.length === 0) return null;
-        return this.rawToUser(data[0] as any);
-    }
-
     public async getImage(id: string): Promise<DatabaseImage | null> {
-        if (await this.cache.images.get(id) !== undefined) return (await this.cache.images.get(id))!;
-         
-        const { data, error } = await this.db.client
-            .from(this.collectionName("images")).select("*")
-            .eq("id", id);
-
-        if (error !== null) throw new GPTDatabaseError({ collection: "users", raw: error });
-        if (data === null || data.length === 0) return null;
-
-        this.setImageCache(data[0] as any);
-        return data[0] as any;
+        return this.fetchFromCacheOrDatabase("images", id);
     }
 
-    /**
-     * Ensure that a database entry exists for the specified user, and return it.
-     * @param user User to ensure database entry for
-     * 
-     * @returns Database entry
-     */
+    public async getUser(user: User): Promise<DatabaseUser | null> {
+        return this.fetchFromCacheOrDatabase<User, DatabaseUser, RawDatabaseUser>(
+            "users", user,
+
+            async raw => {
+                const converted = this.rawToUser(raw);
+                converted.subscription = await this.subscription(converted);
+
+                return converted;
+            }
+        );
+    }
+
     public async fetchUser(user: User): Promise<DatabaseUser> {
-        const data: DatabaseUser | null = await this.getUser(user) || await this.createUser(user);
+        return this.createFromCacheOrDatabase<string, DatabaseUser, RawDatabaseUser>(
+            "users", user.id,
+            () => this.userTemplate(user),
 
-        /* Validate the user's subscription. */
-        data.subscription = await this.subscription(data, "user");
+            async raw => {
+                const converted = this.rawToUser(raw);
+                converted.subscription = await this.subscription(converted);
 
-        if (await this.cache.users.get(user.id) == undefined) await this.setUserCache(user.id, data);
-        return data;
+                return converted;
+            }
+        );
     }
 
 
@@ -354,34 +368,31 @@ export class UserManager {
         };
     }
 
-    private async createGuild(guild: Guild): Promise<DatabaseGuild> {
-        const template: DatabaseGuild = this.guildTemplate(guild);
-
-        await this.addGuildToQueue(guild.id, template);
-        return template;
-    }
-
     public async getGuild(guild: Guild): Promise<DatabaseGuild | null> {
-        if (await this.cache.guilds.get(guild.id) !== undefined) return (await this.cache.guilds.get(guild.id))!;
-         
-        const { data, error } = await this.db.client
-            .from(this.collectionName("guilds")).select("*")
-            .eq("id", guild.id);
+        return this.fetchFromCacheOrDatabase<Guild, DatabaseGuild, RawDatabaseGuild>(
+            "guilds", guild,
 
-        if (error !== null) throw new GPTDatabaseError({ collection: "guilds", raw: error });
-        if (data === null || data.length === 0) return null;
+            async raw => {
+                const converted = this.rawToGuild(raw);
+                converted.subscription = await this.subscription(converted);
 
-        return this.rawToGuild(data[0] as any);
+                return converted;
+            }
+        );
     }
 
     public async fetchGuild(guild: Guild): Promise<DatabaseGuild> {
-        const data: DatabaseGuild | null = await this.getGuild(guild) || await this.createGuild(guild);
+        return this.createFromCacheOrDatabase<string, DatabaseGuild, RawDatabaseGuild>(
+            "guilds", guild.id,
+            () => this.guildTemplate(guild),
 
-        /* Validate the guild's subscription. */
-        data.subscription = await this.subscription(data, "guild") as DatabaseGuildSubscription;
+            async raw => {
+                const converted = this.rawToGuild(raw);
+                converted.subscription = await this.subscription(converted);
 
-        if (await this.cache.guilds.get(guild.id) == undefined) await this.setGuildCache(guild.id, data);
-        return data;
+                return converted;
+            }
+        );
     }
 
 
@@ -424,9 +435,9 @@ export class UserManager {
         if (type !== "moderation" && type !== "ban" && type !== "unban") data.seen = seen ?? false;
 
         /* Update the user cache too. */
-        await this.addUserToQueue(user, {
+        await this.updateUser(user, {
             infractions: [
-                ...(await this.getUser(user.id))!.infractions,
+                ...user.infractions,
                 data
             ]
         });
@@ -462,7 +473,7 @@ export class UserManager {
         );
 
         /* Update the user cache too. */
-        await this.addUserToQueue(user, { infractions: arr });
+        await this.updateUser(user, { infractions: arr });
     }
 
     public unread(user: DatabaseUser): DatabaseUserInfraction[] {
@@ -477,11 +488,11 @@ export class UserManager {
         const updated: number = user.interactions + 1;
 
         /* Update the user cache too. */
-        await this.addUserToQueue(user, { interactions: updated });
+        await this.updateUser(user, { interactions: updated });
     }
 
     public async updateModeratorStatus(user: DatabaseUser, status: boolean): Promise<void> {
-        return await this.addUserToQueue(user, {
+        return await this.updateUser(user, {
             moderator: status
         });
     }
@@ -510,18 +521,11 @@ export class UserManager {
      * 
      * @returns User/guild's current subscription, if available
      */
-    private async subscription(db: DatabaseUser | DatabaseGuild, type: DatabaseSubscriptionType = "user"): Promise<DatabaseSubscription | DatabaseGuildSubscription | null> {
+    private async subscription<T extends DatabaseGuildSubscription | DatabaseSubscription>(db: DatabaseUser | DatabaseGuild): Promise<T | null> {
         if (db.subscription === null) return null;
+        if (db.subscription !== null && Date.now() > db.subscription.expires) return null;
 
-        /* If the user's subscription expired, reset it in the database too. */
-        if (db.subscription !== null && Date.now() > db.subscription.expires)  {
-            //if (type === "user") await this.addUserToQueue(db as DatabaseUser, { subscription: null });
-            //else if (type === "guild") await this.addGuildToQueue(db as DatabaseGuild, { subscription: null });
-
-            return null;
-        }
-
-        return db.subscription;
+        return db.subscription as T;
     }
 
     /**
@@ -531,16 +535,20 @@ export class UserManager {
      * @param expires When the subscription should expire
      */
     public async grantSubscription(user: DatabaseUser | DatabaseGuild, type: DatabaseSubscriptionType, expires: number, by?: Snowflake, key?: DatabaseSubscriptionKey): Promise<void> {
+        /* All previously redeemed subscription keys */
+        const keys: string[] = user.subscription ? user.subscription.keys : [];
+        if (key) keys.push(key.id);
+
         const updated: DatabaseSubscription | DatabaseGuildSubscription = {
             since: user.subscription !== null ? user.subscription.since : Date.now(),
             expires: (user.subscription ? user.subscription.expires - Date.now() : 0) + Date.now() + expires,
-            key: key ? key.id : undefined
+            keys
         };
 
         if (type === "guild") (updated as DatabaseGuildSubscription).by = by!;
 
-        if (type === "user") return this.addUserToQueue(user as DatabaseUser, { subscription: updated });
-        else if (type === "guild") return this.addGuildToQueue(user as DatabaseGuild, { subscription: updated as DatabaseGuildSubscription });
+        if (type === "user") return this.updateUser(user as DatabaseUser, { subscription: updated });
+        else if (type === "guild") return this.updateGuild(user as DatabaseGuild, { subscription: updated as DatabaseGuildSubscription });
     }
 
     /**
@@ -548,8 +556,8 @@ export class UserManager {
      * @param user User to revoke subscription
      */
     public async revokeSubscription(user: DatabaseUser | DatabaseGuild, type: DatabaseSubscriptionType): Promise<void> {
-        if (type === "user") return this.addUserToQueue(user as DatabaseUser, { subscription: null });
-        else if (type === "guild") return this.addGuildToQueue(user as DatabaseGuild, { subscription: null });
+        if (type === "user") return this.updateUser(user as DatabaseUser, { subscription: null });
+        else if (type === "guild") return this.updateGuild(user as DatabaseGuild, { subscription: null });
     }
 
     private rawToSubscriptionKey(key: RawDatabaseSubscriptionKey): DatabaseSubscriptionKey {
@@ -563,7 +571,7 @@ export class UserManager {
     }
 
     public async getSubscriptionKey(key: string): Promise<DatabaseSubscriptionKey | null> {
-        if (await this.cache.keys.get(key) !== undefined) return (await this.cache.keys.get(key))!;
+        if (await this.db.cache.get("keys", key) !== undefined) return (await this.db.cache.get("keys", key))!;
          
         const { data, error } = await this.db.client
             .from(this.collectionName("keys")).select("*")
@@ -596,7 +604,7 @@ export class UserManager {
         }));
 
         /* Add all of the keys to the queue & cache. */
-        await Promise.all(keys.map(key => this.addSubscriptionKeyToQueue(key.id, key)));
+        await Promise.all(keys.map(key => this.updateSubscriptionKey(key.id, key)));
 
         return keys;
     }
@@ -616,7 +624,7 @@ export class UserManager {
      */
     public async redeemSubscriptionKey(user: DatabaseUser | DatabaseGuild, key: DatabaseSubscriptionKey, by?: Snowflake): Promise<void> {
         /* Invalidate the key from the database. */
-        await this.addSubscriptionKeyToQueue(key.id, {
+        await this.updateSubscriptionKey(key.id, {
             ...key,
 
             redeemed: {
@@ -637,36 +645,16 @@ export class UserManager {
         };
     }
 
-    /**
-     * Clear the caches entirely.
-     */
-    public async clearCache(): Promise<void> {
-        this.cache.conversations.clear();
-        this.cache.users.clear();
-    }
+    public async setCache(type: DatabaseCollectionType, obj: DatabaseAll | Snowflake, updates: Partial<DatabaseAll> | DatabaseAll = {}, duration: number = DB_CACHE_DURATION): Promise<void> {
+        const id: string = typeof obj === "string" ? obj : obj.id;
 
-    public async setCache(type: keyof typeof this.cache, obj: DatabaseAll | Snowflake, updates: Partial<DatabaseAll> | DatabaseAll = {}, duration: number = DB_CACHE_DURATION): Promise<void> {
         let updated: DatabaseAll;
-        const existing: DatabaseAll | null = await this.cache.users.get(typeof obj === "string" ? obj : obj.id) ?? null;
+        const existing: DatabaseAll | null = await this.db.cache.get(type,id) ?? null;
 
         if (typeof obj === "string") updated = updates as DatabaseAll;
         else updated = { ...existing !== null ? existing : obj, ...updates as DatabaseAll };
 
-        /* Update the cache for this cluster directly. */
-        await this.cache[type].set(typeof obj === "string" ? obj : obj.id, updated as any, duration);
-
-        /* Set the cache for every cluster. */
-        this.db.bot.client.cluster.broadcastEval((async (client: BotDiscordClient, context: { id: Snowflake; type: string; updated: DatabaseAll; duration: number }) => {
-            await client.bot.db.users.cache[context.type as keyof { users: Keyv<DatabaseUser>; conversations: Keyv<DatabaseConversation>; guilds: Keyv<DatabaseGuild>; }].set(context.id, context.updated as any, context.duration);
-        }) as any, {
-            context: {
-                id: typeof obj === "string" ? obj : obj.id,
-                updated: updated,
-                type: type,
-
-                duration: duration
-            }
-        }).catch(() => {});
+        await this.db.cache.set(type, id, updated as any);
     }
 
     public async setUserCache(user: DatabaseUser | Snowflake, updates?: Partial<DatabaseUser> | DatabaseUser): Promise<void> {
@@ -685,7 +673,7 @@ export class UserManager {
         return this.setCache("images", image, updates, Math.floor(DB_CACHE_DURATION / 2));
     }
 
-    private async addToQueue(type: keyof typeof this.updates, obj: DatabaseAll | Snowflake, updates: Partial<DatabaseAll> | DatabaseAll): Promise<void> {
+    private async update(type: keyof typeof this.updates, obj: DatabaseAll | Snowflake, updates: Partial<DatabaseAll> | DatabaseAll): Promise<void> {
         const id: Snowflake = typeof obj === "string" ? obj : obj.id;
 
         const existing: DatabaseAll | null = this.updates[type].get(id) ?? null;
@@ -697,36 +685,32 @@ export class UserManager {
         this.updates[type].set(id, updated as any);
     }
 
-    public async addUserToQueue(user: DatabaseUser | Snowflake, updates: Partial<DatabaseUser> | DatabaseUser): Promise<void> {
+    public async updateUser(user: DatabaseUser | Snowflake, updates: Partial<DatabaseUser> | DatabaseUser): Promise<void> {
         await Promise.all([
             this.setCache("users", user, updates),
-            this.addToQueue("users", user, updates)
+            this.update("users", user, updates)
         ]);
     }
 
-    public async addGuildToQueue(guild: DatabaseGuild | Snowflake, updates: Partial<DatabaseGuild> | DatabaseGuild): Promise<void> {
+    public async updateGuild(guild: DatabaseGuild | Snowflake, updates: Partial<DatabaseGuild> | DatabaseGuild): Promise<void> {
         await Promise.all([
             this.setCache("guilds", guild, updates),
-            this.addToQueue("guilds", guild, updates)
+            this.update("guilds", guild, updates)
         ]);
     }
 
-    public async addConversationToQueue(conversation: DatabaseConversation | Snowflake, updates: Partial<DatabaseConversation> | DatabaseConversation): Promise<void> {
-        const previous: DatabaseConversation | null =
-            await this.cache.conversations.get(typeof conversation === "string" ? conversation : conversation.id)
-            ?? null;
-
+    public async updateConversation(conversation: DatabaseConversation | Snowflake, updates: Partial<DatabaseConversation> | DatabaseConversation): Promise<void> {
         await Promise.all([
-            this.setCache("conversations", conversation, { ...previous !== null ? previous : {}, ...updates }),
-            this.addToQueue("conversations", conversation, { ...previous !== null ? previous : {}, ...updates })
+            this.setCache("conversations", conversation, updates),
+            this.update("conversations", conversation, updates)
         ]);
     }
 
-    public async addMessageToQueue(message: DatabaseMessage): Promise<void> {
-        await this.addToQueue("interactions", message.id, message);
+    public async updateInteraction(message: DatabaseMessage): Promise<void> {
+        await this.update("interactions", message.id, message);
     }
 
-    public async addImageToQueue(image: DatabaseImage): Promise<void> {
+    public async updateImage(image: DatabaseImage): Promise<void> {
         /* Remove the `url` property from all image generation results, as it expires anyway. */
         const data: DatabaseImage = {
             ...image,
@@ -736,14 +720,16 @@ export class UserManager {
             ) as any
         };
 
-        await this.setImageCache(data);
-        await this.addToQueue("images", image.id, data);
+        await Promise.all([
+            this.setImageCache(data),
+            this.update("images", image.id, data)
+        ]);
     }
 
-    public async addSubscriptionKeyToQueue(key: DatabaseSubscriptionKey | string, updates: Partial<DatabaseSubscriptionKey> | DatabaseSubscriptionKey): Promise<void> {
+    public async updateSubscriptionKey(key: DatabaseSubscriptionKey | string, updates: Partial<DatabaseSubscriptionKey> | DatabaseSubscriptionKey): Promise<void> {
         await Promise.all([
             await this.setCache("keys", key, updates),
-            await this.addToQueue("keys", key, updates)
+            await this.update("keys", key, updates)
         ]);
     }
 

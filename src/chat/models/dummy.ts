@@ -18,12 +18,16 @@ export class DummyModel extends ChatModel {
 
     public async complete(options: ModelGenerationOptions): Promise<PartialResponseMessage> {
         /* Build prompt ... */
-        const prompt = await this.client.buildPrompt(options, "ChatGPT");
+        //const prompt = await this.client.buildPrompt(options, "ChatGPT");
         
         /* Run generation */
 
         return {
-            text: `${Math.random()}`
+            text: `${Math.random()}`,
+            raw: {
+                finishReason: "maxLength",
+                usage: null
+            }
         };
     }
 }

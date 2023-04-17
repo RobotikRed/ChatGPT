@@ -26,7 +26,7 @@ const formatTermsResponse = (bot: Bot): Response => {
  */
 export const sendTermsNotice = async (bot: Bot, db: DatabaseUser, message: CommandInteraction | Message): Promise<void> => {
     /* If the user already accepted the Terms of Service, ignore this. */
-    if (db.acceptedTerms) return;
+    if (db.terms === null) return;
 
     const response: Response = formatTermsResponse(bot);
 
@@ -50,7 +50,7 @@ export const sendTermsNotice = async (bot: Bot, db: DatabaseUser, message: Comma
         }, TERMS_TIMEOUT_DURATION);
     });
 
-    await bot.db.users.addUserToQueue(db, {
-        acceptedTerms: true
+    await bot.db.users.updateUser(db, {
+        terms: new Date().toISOString()
     });
 }

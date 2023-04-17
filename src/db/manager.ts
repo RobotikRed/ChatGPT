@@ -1,6 +1,7 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 import { StorageManager } from "./managers/storage.js";
+import { CacheManager } from "./managers/cache.js";
 import { UserManager } from "./managers/user.js";
 import { Database } from "./types/db.js";
 import { Bot } from "../bot/bot.js";
@@ -13,13 +14,15 @@ export class DatabaseManager {
 
     /* Various sub-managers */
     public storage: StorageManager;
+    public cache: CacheManager;
     public users: UserManager;
-
+    
     constructor(bot: Bot) {
         this.bot = bot;
         this.client = null!;
 
         this.storage = new StorageManager(this);
+        this.cache = new CacheManager(this);
         this.users = new UserManager(this);
     }
 

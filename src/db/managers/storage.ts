@@ -41,7 +41,7 @@ export class StorageManager {
         const { data, error } = await this.client.getBucket(name);
         this.checkError(error);
 
-        if (data === null) throw new Error("What");
+        if (data === null) throw new Error(`Bucket ${name} doesn't exist`);
         return data;
     }
 
@@ -58,7 +58,7 @@ export class StorageManager {
 
         this.checkError(error);
 
-        if (data === null) throw new Error("What");
+        if (data === null) throw new Error(`Image result ${image.id} doesn't exist in storage`);
         return { url: data.signedUrl};
     }
 

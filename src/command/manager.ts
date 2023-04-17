@@ -268,7 +268,7 @@ export class CommandManager {
 		}
 
 		/* If the user hasn't accepted the Terms of Service yet, ... */
-		if (!db.user.acceptedTerms) await sendTermsNotice(this.bot, db.user, interaction);
+		await sendTermsNotice(this.bot, db.user, interaction);
 
 		const banned: DatabaseUserInfraction | null = this.bot.db.users.banned(db.user);
 		const unread: DatabaseUserInfraction[] = this.bot.db.users.unread(db.user);

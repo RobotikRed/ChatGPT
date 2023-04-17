@@ -529,7 +529,7 @@ export default class ImagineCommand extends Command {
 					embeds: [ embed ]
 				}),
 	
-				this.bot.db.users.addImageToQueue({
+				this.bot.db.users.updateImage({
 					...image,
 					rating: score
 				})
@@ -677,7 +677,7 @@ export default class ImagineCommand extends Command {
 
 			/* Add the generated results to the database. */
 			if (usable) {
-				await this.bot.db.users.addImageToQueue(this.bot.image.toDatabase(interaction.user, options, prompt, result, nsfw));
+				await this.bot.db.users.updateImage(this.bot.image.toDatabase(interaction.user, options, prompt, result, nsfw));
 
 				/* Upload the generated images to the storage bucket. */
 				await this.bot.db.storage.uploadImages(result);
@@ -765,7 +765,7 @@ export default class ImagineCommand extends Command {
 		const conversation: Conversation = await this.bot.conversation.create(interaction.user);
 
 		/* If the conversation wasn't loaded yet, but it is cached in the database, try to load it. */
-		if (!conversation.active && await conversation.cachedConversation()) {
+		if (!conversation.active && await conversation.cached()) {
 			await conversation.loadFromDatabase();
 			await conversation.init();
 		}

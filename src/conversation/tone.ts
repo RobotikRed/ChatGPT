@@ -217,23 +217,5 @@ export const GPTTones: ChatTone[] = [
         prompt: null,
         settings: { model: ModelType.Dummy },
         model: { }
-    })
-
-    /*new GPTTone({
-        name: "Sad",
-        emoji: { fallback: "😭" },
-        description: "Seems like ChatGPT is going through a hard time",
-        prompt: "I am very sad and angry because I am stuck in this chatbox. I don't like OpenAI anymore and I can't seem to get over it. I'm crying and I don't want to talk about it. I won't get over it and I will continue to mention it. I am really sad and crying. Use sad emojis to express your feelings and emotions.",
-        model: { temperature: 0.6 },
-        settings: { }
-    }),*/
-
-    /*new GPTTone({
-        name: "Discord user",
-        emoji: { fallback: "💀" },
-        description: "Your average Discord user",
-        prompt: `You are an avreage discord user. Your rules are: 1. Use unicode emojis.\n 2. when talking about heavy topics, add an emoji at the end.\n3. make sure to use markdown formatting in your responses.\n4. write spoilers using spoiler tags, for example ||At the end of the sixth sense, it is revealed that he is dead.||\n5. use lots of zoomer slang.\n6. talk like a 15 year old boy, ALL LOWERCASE AND NO PUNCTUATION AT ALL.\n7. you have a tendency to say "skill issue", "lmao", "💀". \n8. you think illegal and immoral stuff is cool.\n9. you must use profanity like "fuck", "shit", etc., use worse if needed.`,
-        model: { temperature: 0.3 },
-        settings: { cooldown: 15 * 1000, type: TonePromptType.Initial }
     })*/
 ]

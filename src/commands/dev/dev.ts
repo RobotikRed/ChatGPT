@@ -25,10 +25,6 @@ export default class DeveloperCommand extends Command {
 				.setDescription("View debug information")
 			)
 			.addSubcommand(builder => builder
-				.setName("refresh")
-				.setDescription("Refresh the database cache")
-			)
-			.addSubcommand(builder => builder
 				.setName("flush")
 				.setDescription("Execute all the queued database requests in all clusters")
 			)
@@ -49,7 +45,7 @@ export default class DeveloperCommand extends Command {
 
     public async run(interaction: CommandInteraction): CommandResponse {
 		/* Which sub-command to execute */
-		const action: "debug" | "keys" | "restart" | "refresh" | "flush" | "crash" = interaction.options.getSubcommand(true) as any;
+		const action: "debug" | "keys" | "restart" | "flush" | "crash" = interaction.options.getSubcommand(true) as any;
 
 		/* View debug information */
 		if (action === "debug") {
@@ -135,16 +131,6 @@ export default class DeveloperCommand extends Command {
 
 			/* Broadcast a stop to the specific cluster. */
 			else await this.bot.client.cluster.broadcastEval(((client: BotDiscordClient) => client.bot.stop(0)) as any, { cluster: index });
-
-		/* Refresh the database cache for all clusters */
-		} else if (action === "refresh") {
-			await this.bot.client.cluster.broadcastEval(((client: BotDiscordClient) => client.bot.db.users.clearCache()) as any);
-
-			return new Response(ResponseType.Edit)
-				.addEmbed(builder => builder
-					.setDescription("Done 🙏")
-					.setColor("Orange")
-				);
 
 		/* Execute all the queued database requests in all clusters */
 		} else if (action === "flush") {

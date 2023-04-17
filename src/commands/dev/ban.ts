@@ -11,16 +11,16 @@ export default class BanCommand extends Command {
         super(bot,
             new SlashCommandBuilder()
 				.setName("ban")
-				.setDescription("Ban / unban a user")
+				.setDescription("Ban/unban a user")
 				.addStringOption(builder => builder
 					.setName("id")
-					.setDescription("ID or tag of the user to ban / unban")
+					.setDescription("ID or tag of the user to ban/unban")
 					.setRequired(true)
 				)
 				.addStringOption(builder => builder
 					.setName("reason")
-					.setDescription("Reason for the ban / unban")
-					.setRequired(true)
+					.setDescription("Reason for the ban/unban")
+					.setRequired(false)
 				)
         , { private: CommandPrivateType.ModeratorOnly });
     }
@@ -29,9 +29,6 @@ export default class BanCommand extends Command {
 		/* ID of the user */
 		const id: string = interaction.options.getString("id", true);
 		const target: User | null = await Utils.findUser(this.bot, id);
-
-		/* Reason for the warning */
-		const reason: string | null = interaction.options.getString("reason") !== null ? interaction.options.getString("reason", true) : "Inappropriate use of the bot";
 		
 		if (target === null) return new Response()
 			.addEmbed(builder => builder
@@ -52,6 +49,11 @@ export default class BanCommand extends Command {
 
 		/* Whether the user should be banned / unbanned */
 		const action: boolean = !this.bot.db.users.banned(db);
+
+		/* Reason for the warning */
+		const reason: string | undefined = interaction.options.getString("reason") !== null
+			? interaction.options.getString("reason", true)
+			: action ? "Inappropriate use of the bot" : undefined;
 
 		/* Ban / unban the user */
 		await this.bot.db.users.ban(db, {

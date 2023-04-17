@@ -84,7 +84,7 @@ export default class ToneCommand extends Command {
 		const conversation: Conversation = await this.bot.conversation.create(interaction.user);
 
 		/* If the conversation wasn't loaded yet, but it is cached in the database, try to load it. */
-		if (!conversation.active && await conversation.cachedConversation()) {
+		if (!conversation.active && await conversation.cached()) {
 			await conversation.loadFromDatabase();
 			await conversation.init();
 		}
@@ -121,7 +121,7 @@ export default class ToneCommand extends Command {
 		const conversation: Conversation = await this.bot.conversation.create(interaction.user);
 
 		/* If the conversation wasn't loaded yet, but it is cached in the database, try to load it. */
-		if (!conversation.active && await conversation.cachedConversation()) {
+		if (!conversation.active && await conversation.cached()) {
 			await conversation.loadFromDatabase();
 			await conversation.init();
 		}

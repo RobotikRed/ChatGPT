@@ -16,9 +16,11 @@ import { ImageManager } from "../image/manager.js";
 import { ShardLogger } from "../util/logger.js";
 import { ConfigBranding } from "../config.js";
 import { NatAI } from "../chat/other/nat.js";
+import { TuringAPI } from "../turing/api.js";
 import { Event } from "../event/event.js";
 import { Utils } from "../util/utils.js";
 import { StrippedApp } from "../app.js";
+
 
 
 export type BotStatusType = StatusIncidentType | "maintenance";
@@ -85,6 +87,9 @@ export class Bot extends EventEmitter {
     /* Lexica AI image search engine manager */
     public readonly lexica: LexicaAPI;
 
+    /* Turing API manager */
+    public readonly turing: TuringAPI;
+
     /* Replicate API manager */
     public readonly replicate: ReplicateManager;
 
@@ -116,6 +121,7 @@ export class Bot extends EventEmitter {
         this.image = new ImageManager(this);
         this.db = new DatabaseManager(this);
         this.hf = new HuggingFaceAPI(this);
+        this.turing = new TuringAPI(this);
         this.ai = new OpenAIManager(this);
         this.lexica = new LexicaAPI();
         this.nat = new NatAI(this);

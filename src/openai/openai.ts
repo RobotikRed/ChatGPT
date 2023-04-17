@@ -48,7 +48,7 @@ export class OpenAIManager {
      * @throws An error, if the request to OpenAI failed
      * @returns Moderation data
      */
-    public async chat(options: OpenAIChatBody, progress?: (data: OpenAIPartialCompletionsJSON) => Promise<void> | void, endpoint: keyof typeof OpenAIAPIBasePaths = "Bypass"): Promise<OpenAIChatCompletionsData> {
+    public async chat(options: OpenAIChatBody, progress?: (data: OpenAIPartialCompletionsJSON) => Promise<void> | void): Promise<OpenAIChatCompletionsData> {
         /* Latest message of the stream */
         let latest: OpenAIPartialCompletionsJSON | null = null;
 
@@ -65,8 +65,8 @@ export class OpenAIManager {
             }, 10 * 1000);
 
             try {
-                await fetchEventSource(this.url("chat/completions", OpenAIAPIBasePaths[endpoint]), {
-                    headers: this.headers(endpoint === "Bypass") as any,
+                await fetchEventSource(this.url("chat/completions"), {
+                    headers: this.headers() as any,
                     body: JSON.stringify(options),
                     signal: controller.signal,
                     method: "POST",
@@ -186,7 +186,7 @@ export class OpenAIManager {
      * @throws An error, if the request to OpenAI failed
      * @returns Moderation data
      */
-    public async complete(options: OpenAICompletionsBody, progress?: (data: OpenAICompletionsJSON) => Promise<void> | void, endpoint: keyof typeof OpenAIAPIBasePaths = "Bypass"): Promise<OpenAICompletionsData> {
+    public async complete(options: OpenAICompletionsBody, progress?: (data: OpenAICompletionsJSON) => Promise<void> | void): Promise<OpenAICompletionsData> {
         /* Latest message of the stream */
         let latest: OpenAICompletionsJSON | null = null;
 
@@ -203,8 +203,8 @@ export class OpenAIManager {
             }, 10 * 1000);
 
             try {
-                fetchEventSource(this.url("completions", OpenAIAPIBasePaths[endpoint]), {
-                    headers: this.headers(endpoint === "Bypass") as any,
+                fetchEventSource(this.url("completions"), {
+                    headers: this.headers() as any,
                     body: JSON.stringify(options),
                     mode: "cors",
                     signal: controller.signal,
@@ -347,17 +347,16 @@ export class OpenAIManager {
         });
     }
 
-    public url(path: OpenAIAPIPath, base?: keyof typeof OpenAIAPIBasePaths | string): string {
-        return `${base ?? OpenAIAPIBasePaths.Official}/${path}`;
+    public url(path: OpenAIAPIPath): string {
+        return `https://api.openai.com/v1/${path}`;
     }
 
     /* Headers used for OpenAI API requests */
-    public headers(anon: boolean = false): HeadersInit {
+    public headers(): HeadersInit {
         if (this.token === null) throw new Error("API is not initialized");
-        anon = false;
 
         return {
-            Authorization: anon ? "free" : `Bearer ${this.token}`,
+            Authorization: `Bearer ${this.token}`,
             "Content-Type": "application/json"
         };
     }

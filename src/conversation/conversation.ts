@@ -1,7 +1,7 @@
 import { Message, User } from "discord.js";
 import EventEmitter from "events";
 
-import { DatabaseConversation, DatabaseResponseMessage, DatabaseUser } from "../db/managers/user.js";
+import { DatabaseConversation, DatabaseResponseMessage, DatabaseUser, RawDatabaseConversation } from "../db/managers/user.js";
 import { GPTGenerationError, GPTGenerationErrorType } from "../error/gpt/generation.js";
 import { GenerationOptions, Session, SessionState, StopState } from "./session.js";
 import { ChatInputImage, ImageBuffer } from "../chat/types/image.js";
@@ -130,21 +130,14 @@ export class Conversation extends EventEmitter {
 		this.locked = false;
 	}
 
-	public async cachedConversation(): Promise<DatabaseConversation | null> {
-		if (await this.manager.bot.db.users.cache.conversations.get(this.id) !== undefined) return (await this.manager.bot.db.users.cache.conversations.get(this.id))!;
-
-		const { data, error } = await this.manager.bot.db.client
-			.from(this.manager.bot.db.users.collectionName("conversations"))
-			.select("*")
-			
-			.eq("id", this.id);
-
-		if (error !== null || data === null || data.length === 0) return null;
-
-		const conversation: DatabaseConversation = this.manager.bot.db.users.rawToConversation(data[0] as any);
-		await this.manager.bot.db.users.setConversationCache(this.id, conversation);
-		
-		return conversation;
+	/**
+	 * Cached database conversation
+	 */
+	public async cached(): Promise<DatabaseConversation | null> {
+		return this.manager.bot.db.users.fetchFromCacheOrDatabase<string, DatabaseConversation, RawDatabaseConversation>(
+			"conversations", this.id,
+			raw => this.manager.bot.db.users.rawToConversation(raw)
+		);
 	}
 
 	/**
@@ -152,7 +145,7 @@ export class Conversation extends EventEmitter {
 	 */
 	public async loadFromDatabase(): Promise<void> {
 		/* Get information about the existing conversation, including conversation ID and signature. */
-		const data = await this.cachedConversation();
+		const data = await this.cached();
 
 		/* If the conversation was not found in the database, throw an error. */
 		if (data === null) throw new Error("Conversation does not exist in database");
@@ -190,7 +183,7 @@ export class Conversation extends EventEmitter {
 		await this.manager.bot.db.users.fetchUser(this.user);
 
         /* Update the conversation entry in the database. */
-        if (this.history.length === 0) await this.manager.bot.db.users.addConversationToQueue(this.id, {
+        if (this.history.length === 0) await this.manager.bot.db.users.updateConversation(this.id, {
                 created: Date.now(),
                 id: this.id,
                 active: true,
@@ -260,7 +253,7 @@ export class Conversation extends EventEmitter {
 		}).catch(() => {});
 
 		/* Update the database entry too. */
-        if (apply) await this.manager.bot.db.users.addConversationToQueue(this.id, { tone: this.tone.id });
+        if (apply) await this.manager.bot.db.users.updateConversation(this.id, { tone: this.tone.id });
 		this.applyResetTimer();
 	}
 
@@ -298,7 +291,7 @@ export class Conversation extends EventEmitter {
 
 			.eq("id", this.id);
 			
-		else await this.manager.bot.db.users.addConversationToQueue(this.id, { history: [] });
+		else await this.manager.bot.db.users.updateConversation(this.id, { history: [] });
 
 		/* Unlock the conversation, if a requestion was running meanwhile. */
 		this.active = !remove;
@@ -428,7 +421,7 @@ export class Conversation extends EventEmitter {
 		await this.pushToClusters(result);
 
 		/* Also update the last-updated time and message count in the database for this conversation. */
-		await this.manager.bot.db.users.addConversationToQueue(this.id, {
+		await this.manager.bot.db.users.updateConversation(this.id, {
 			/* Save a stripped-down version of the chat history in the database. */
 			history: this.history.map(entry => ({
 				id: entry.output.id,
@@ -438,7 +431,7 @@ export class Conversation extends EventEmitter {
 		});
 
 		/* If messages should be collected in the database, insert the generated message. */
-		await this.manager.bot.db.users.addMessageToQueue(
+		await this.manager.bot.db.users.updateInteraction(
 			{
 				completedAt: new Date().toISOString(),
 				requestedAt: before.toISOString(),

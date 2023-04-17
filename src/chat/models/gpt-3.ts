@@ -36,7 +36,7 @@ export class GPT3Model extends ChatModel {
             temperature: options.conversation.tone.model.temperature ?? 0.5,
             max_tokens: isFinite(prompt.max) ? prompt.max : undefined,
             prompt: prompt.prompt
-        }, progress, this.client.session.manager.bot.db.users.canUsePremiumFeatures(options.db) ? "Official" : "Bypass");
+        }, progress);
 
         if (data.response.text.trim().length === 0) return null;
 

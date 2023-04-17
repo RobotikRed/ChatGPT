@@ -7,7 +7,7 @@ import { reactToMessage, removeReaction } from "./utils/reaction.js";
 import { ChatModel, ModelCapability } from "../chat/types/model.js";
 import { buildBanNotice } from "../util/moderation/moderation.js";
 import { buildIntroductionPage } from "../util/introduction.js";
-import { DatabaseUserInfraction } from "../db/managers/user.js";
+import { DatabaseInfo, DatabaseUserInfraction } from "../db/managers/user.js";
 import ImagineCommand from "../commands/imagine.js";
 import { format } from "../chat/utils/formatter.js";
 import { Response } from "../command/response.js";
@@ -20,6 +20,7 @@ import { GPTGenerationError, GPTGenerationErrorType } from "../error/gpt/generat
 import { handleError } from "../util/moderation/error.js";
 import { GPTAPIError } from "../error/gpt/api.js";
 import { sendTermsNotice } from "../util/terms.js";
+import { OtherPrompts } from "../chat/client.js";
 
 /* Emoji to indicate that a generation is running */
 const BOT_GENERATING_EMOJI: EmojiIdentifierResolvable = "<a:loading:1051419341914132554>";
@@ -31,6 +32,10 @@ const BOT_REQUIRED_PERMISSIONS: { [key: string]: PermissionsString } = {
 	"Read Message History": "ReadMessageHistory"
 }
 
+enum GeneratorButtonType {
+	Continue
+}
+
 export interface GeneratorOptions {
 	/* Discord message, which triggered the generation */
 	message: Message;
@@ -40,6 +45,9 @@ export interface GeneratorOptions {
 
 	/* Author of the message */
 	author: User;
+
+	/* Whether the user used the Continue button */
+	button?: GeneratorButtonType;
 }
 
 export class Generator {
@@ -56,7 +64,7 @@ export class Generator {
 	 * 
 	 * @returns Formatted Discord message
 	 */
-	public async process(conversation: Conversation, guild: Guild | null, data: ResponseMessage, options: GeneratorOptions, moderations: (ModerationResult | null)[], pending: boolean): Promise<Response | null> {
+	public async process(conversation: Conversation, guild: Guild | null, data: ResponseMessage, options: GeneratorOptions, db: DatabaseInfo, moderations: (ModerationResult | null)[], pending: boolean): Promise<Response | null> {
 		/* If the message wasn't initialized yet, ignore this. */
 		if (data === null) return null;
 
@@ -78,7 +86,7 @@ export class Generator {
 					.setImage(`attachment://image-${index}.png`)
 					.setColor("Purple");
 
-				if (image.prompt) builder.setTitle(Utils.truncate(image.prompt, 1000));
+				if (image.prompt) builder.setTitle(Utils.truncate(image.prompt, 100));
 				if (image.duration) builder.setFooter({ text: `${(image.duration / 1000).toFixed(1)}s${image.notice ? ` • ${image.notice}` : ""}` });
 
 				embeds.push(builder);
@@ -122,19 +130,24 @@ export class Generator {
 
 		/* Only show the daily limit, if the generation request is already finished. */
 		if (!pending) {
-			const db = await this.bot.db.users.fetchData(conversation.user, guild);
 			const buttons: ButtonBuilder[] = [];
 
-			/* Add the tone selector, if the user is not on the default one. */
+			/* If the message got cut off, add a Continue button. */
+			if (data.raw && data.raw.finishReason === "maxLength") buttons.push(
+				new ButtonBuilder()
+					.setCustomId(`continue:${conversation.id}`)
+					.setStyle(ButtonStyle.Secondary)
+					.setLabel("Continue")
+					.setEmoji("📜")
+			);
+
 			buttons.push(
 				new ButtonBuilder()
 					.setCustomId(`tone:${conversation.id}`)
 					.setEmoji(conversation.tone.emoji.display as ComponentEmojiResolvable ?? conversation.tone.emoji.fallback)
 					.setLabel(conversation.tone.name)
-					.setStyle(ButtonStyle.Secondary)
-			);
+					.setStyle(ButtonStyle.Secondary),
 
-			buttons.push(
 				new ButtonBuilder()
 					.setCustomId(`user:${conversation.id}`)
 					.setDisabled(true)
@@ -151,14 +164,17 @@ export class Generator {
 
 		/* If the generated message finished due to reaching the token limit, show a notice. */
 		if (!pending && data.raw && data.raw.finishReason === "maxLength") {
-			const db = await this.bot.db.users.fetchData(conversation.user, guild);
-
 			embeds.push(new EmbedBuilder()
 				.setDescription(`This message reached the length limit, and was not fully generated.${!this.bot.db.users.canUsePremiumFeatures(db) ? "\n✨ _**Premium** removes the length limit **entirely**, and grants you exclusive features - view \`/premium info\` for more_." : ""}`)
 				.setColor("Yellow")
 			);
 
 			content = `${content} **...**`;
+		}
+
+		/* If the previous message got cut off, add an indicator. */
+		if (options.button === GeneratorButtonType.Continue) {
+			content = `**...** ${content}`;
 		}
 
 		/* Generated response, with the pending indicator */
@@ -203,7 +219,7 @@ export class Generator {
 		const conversation: Conversation = await this.bot.conversation.create(button.user);
 
 		/* If the conversation wasn't loaded yet, but it is cached in the database, try to load it. */
-		if (!conversation.active && await conversation.cachedConversation()) {
+		if (!conversation.active && await conversation.cached()) {
 			await conversation.loadFromDatabase();
 			await conversation.init();
 		}
@@ -223,6 +239,60 @@ export class Generator {
 		/* If the user requsted to delete this interaction response, ... */
 		} else if (action === "delete") {
 			return void await button.message.delete().catch(() => {});
+		}
+
+		/* Remaining cool-down time */
+		const remaining: number = (conversation.cooldown.state.startedAt! + conversation.cooldown.state.expiresIn!) - Date.now();
+
+		/* If the command is on cool-down, don't run the request. */
+		if (conversation.cooldown.active && remaining > Math.max(conversation.cooldown.state.expiresIn! / 2, 10 * 1000)) {
+			const subscriptionType = this.bot.db.users.subscriptionType(await this.bot.db.users.fetchData(button.user, button.guild));
+
+			const additional: EmbedBuilder | null = subscriptionType !== "UserPremium" ?
+					subscriptionType === "Free" ?
+						new EmbedBuilder()
+							.setDescription(`✨ By buying **[Premium](${Utils.shopURL()})**, your cool-down will be lowered to **a few seconds** only, with **unlimited** messages per day.\n**Premium** *also includes further benefits, view \`/premium info\` for more*. ✨`)
+							.setColor("Orange")
+					
+					: subscriptionType === "GuildPremium"
+						? 
+							new EmbedBuilder()
+							.setDescription(`✨ By buying **[Premium](${Utils.shopURL()})** for yourself, the cool-down will be lowered to only **a few seconds**, with **unlimited** messages per day.\n**Premium** *also includes further benefits, view \`/premium info\` for more*. ✨`)
+							.setColor("Orange")
+						: null
+				: null;
+
+			const reply = await button.reply({
+				embeds: [
+					new EmbedBuilder()
+						.setTitle("Whoa-whoa... slow down ⌛")
+						.setDescription(`I'm sorry, but I can't keep up with your requests. You can talk to me again <t:${Math.floor((conversation.cooldown.state.startedAt! + conversation.cooldown.state.expiresIn! + 1000) / 1000)}:R>. 😔`)
+						.setColor("Yellow"),
+
+					...additional !== null ? [ additional ] : []
+				],
+
+				ephemeral: true
+			}).catch(() => null);
+
+			if (reply === null) return;
+
+			/* Once the cool-down is over, delete the invocation and reply message. */
+			setTimeout(async () => {
+				await button.deleteReply().catch(() => {});
+			}, remaining);
+		}
+
+		/* Continue generating the cut-off message. */
+		if (action === "continue") {
+			await button.deferUpdate();
+
+			await this.handle({
+				button: GeneratorButtonType.Continue,
+				content: OtherPrompts.Continue,
+				message: button.message,
+				author: button.user
+			});
 		}
 	}
 
@@ -245,7 +315,7 @@ export class Generator {
 
     /**
      * Process the specified Discord message, and if it is valid, send a request to
-     * GPT-3 to generate a response for the message content.
+     * the chat handler to generate a response for the message content.
      * 
      * @param message Message to process
      * @param existing Message to edit, instead of sending a new reply
@@ -258,7 +328,7 @@ export class Generator {
 		const mentions = this.mentions(message);
 
 		/* If the message was sent by a bot, or the bot wasn't mentioned in the message, return. */
-		if (author.bot || mentions === null) return;
+		if (options.button == undefined && (author.bot || mentions === null)) return;
 
 		/* If the message was sent in the error or moderation channel, ignore it entirely. */
 		if (message.channelId === this.bot.app.config.channels.error.channel || message.channelId === this.bot.app.config.channels.moderation.channel) return;
@@ -340,7 +410,7 @@ export class Generator {
 		let db = await this.bot.db.users.fetchData(author, guild);
 
 		/* If the user hasn't accepted the Terms of Service yet, ... */
-		if (!db.user.acceptedTerms) await sendTermsNotice(this.bot, db.user, message);
+		await sendTermsNotice(this.bot, db.user, message);
 
 		const banned: DatabaseUserInfraction | null = this.bot.db.users.banned(db.user);
 		const unread: DatabaseUserInfraction[] = this.bot.db.users.unread(db.user);
@@ -555,7 +625,7 @@ export class Generator {
 		conversation.locked = true;
 
 		/* If the message content was not provided by another source, check it for profanity & ask the user if they want to execute the request anyways. */
-		const moderation: ModerationResult | null = content.length > 0 ? await moderate({
+		const moderation: ModerationResult | null = content.length > 0 && !options.button ? await moderate({
 			conversation, db, content, message,
 			source: "user"
 		}) : null;
@@ -588,7 +658,7 @@ export class Generator {
 			if (data === null || (!partial && (data.type === "Chat" || data.type === "ChatNotice"))) return;
 
 			/* Generate a nicely formatted embed. */
-			const response: Response | null = await this.process(conversation, guild, data, options, [ moderation ], true);
+			const response: Response | null = await this.process(conversation, guild, data, options, db, [ moderation ], true);
 
 			/* Send an initial reply placeholder. */
 			if (reply === null && final === null && !queued && (partial || (!partial && (data.type !== "Chat" && data.type !== "ChatNotice")))) {
@@ -755,7 +825,7 @@ export class Generator {
 			}
 
 			/* Gemerate a nicely formatted embed. */
-			const response: Response | null = final !== null ? await this.process(conversation, guild, final.output, options, [ moderation, final.moderation ], false) : null;
+			const response: Response | null = final !== null ? await this.process(conversation, guild, final.output, options, db, [ moderation, final.moderation ], false) : null;
 
 			/* If the embed failed to generate, send an error message. */
 			if (response === null) return await sendError(new Response()
