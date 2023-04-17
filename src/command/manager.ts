@@ -366,5 +366,10 @@ export class CommandManager {
 
 		/* Reply with the response, if one was given. */
 		if (response) await response.send(interaction);
+
+		/* Increment the user's interaction count. */
+		await this.bot.db.users.incrementInteractions(db.user, "commands");
 	}
+
+	
 }

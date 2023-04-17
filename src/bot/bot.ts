@@ -1,6 +1,5 @@
 import { ActivityType, Awaitable, basename, Client, GatewayIntentBits, Partials } from "discord.js";
 import { ClusterClient, getInfo, IPCMessage, messageType } from "discord-hybrid-sharding";
-import { LexicaAPI } from "lexica-api";
 import EventEmitter from "events";
 import chalk from "chalk";
 
@@ -20,7 +19,6 @@ import { TuringAPI } from "../turing/api.js";
 import { Event } from "../event/event.js";
 import { Utils } from "../util/utils.js";
 import { StrippedApp } from "../app.js";
-
 
 
 export type BotStatusType = StatusIncidentType | "maintenance";
@@ -44,7 +42,7 @@ interface BotSetupStep {
     check?: () => Awaitable<boolean>;
 
     /* Function to execute for the setup step */
-    execute: () => Promise<any>;
+    execute: () => Awaitable<any>;
 }
 
 export type BotDiscordClient = Client & {
@@ -84,9 +82,6 @@ export class Bot extends EventEmitter {
     /* Nat Playground API manager */
     public readonly nat: NatAI;
 
-    /* Lexica AI image search engine manager */
-    public readonly lexica: LexicaAPI;
-
     /* Turing API manager */
     public readonly turing: TuringAPI;
 
@@ -123,7 +118,6 @@ export class Bot extends EventEmitter {
         this.hf = new HuggingFaceAPI(this);
         this.turing = new TuringAPI(this);
         this.ai = new OpenAIManager(this);
-        this.lexica = new LexicaAPI();
         this.nat = new NatAI(this);
         
         this.client = new Client({
@@ -231,7 +225,9 @@ export class Bot extends EventEmitter {
             {
                 name: "Register Discord commands",
                 check: () => this.data.id === 0,
-                execute: async () => this.command.register()
+                execute: () => {
+                    this.command.register();
+                }
             },
 
             {

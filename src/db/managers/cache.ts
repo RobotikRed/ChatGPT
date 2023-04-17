@@ -15,15 +15,16 @@ export class CacheManager {
         key: string,
         value: any[] | { [key: string]: any }
     ): Promise<void> {
-        this.db.bot.logger.debug("Cache set ->", chalk.bold(collection), "->", chalk.bold(key));
-        await this.db.bot.turing.setCache(this.keyName(collection, key), JSON.stringify(value));
+        if (this.db.bot.dev) this.db.bot.logger.debug("Cache set ->", chalk.bold(collection), "->", chalk.bold(key));
+        this.db.bot.turing.setCache(this.keyName(collection, key), JSON.stringify(value));
     }
 
     public async get<T>(
         collection: DatabaseCollectionType,
         key: string
     ): Promise<T> {
-        this.db.bot.logger.debug("Cache get ->", chalk.bold(collection), "->", chalk.bold(key));
+        if (this.db.bot.dev) this.db.bot.logger.debug("Cache get ->", chalk.bold(collection), "->", chalk.bold(key));
+
         const raw: string = await this.db.bot.turing.getCache(this.keyName(collection, key));
         return JSON.parse(raw);
     }
@@ -36,6 +37,6 @@ export class CacheManager {
     }
 
     private keyName(collection: DatabaseCollectionType, key: string): string {
-        return `${collection}-${key}`;
+        return `${collection}-${key}-3`;
     }
 }

@@ -34,11 +34,13 @@ export interface RawDatabaseUser {
     id: Snowflake;
     created: string;
     moderator: boolean;
-    interactions: number;
+    interactions: DatabaseInteractionStatistics;
     infractions: DatabaseUserInfraction[];
     subscription: DatabaseSubscription | null;
     terms: string | null;
     testerGroup: UserTestingGroup;
+    metadata: UserMetadata | null;
+    voted: boolean;
 }
 
 export interface RawDatabaseSubscriptionKey {
@@ -127,6 +129,8 @@ export interface DatabaseGuild {
 
     /* Information about the guild's subscription */
     subscription: DatabaseGuildSubscription | null;
+
+    /* How many interactions this server has had with the bot so far */
 }
 
 export interface DatabaseUser {
@@ -140,7 +144,7 @@ export interface DatabaseUser {
     moderator: boolean;
 
     /* How many interactions the user has with the bot */
-    interactions: number;
+    interactions: DatabaseInteractionStatistics;
 
     /* Moderation history of the user */
     infractions: DatabaseUserInfraction[];
@@ -156,6 +160,9 @@ export interface DatabaseUser {
 
     /* Other miscellaneous data about the user */
     metadata: UserMetadata | null;
+
+    /* Whether the user has voted for the bot */
+    voted: boolean;
 }
 
 export interface UserMetadata {
@@ -172,6 +179,12 @@ export enum UserTestingGroup {
 
     /* Priority tester; preferred for new features: Alan, etc. */
     Priority = 2
+}
+
+export interface DatabaseInteractionStatistics {
+    commands: number;
+    messages: number;
+    images: number;
 }
 
 export interface DatabaseInfo {
@@ -211,15 +224,12 @@ export interface DatabaseMessage {
     tone: string;
 }
 
-type DatabaseAll = DatabaseUser | DatabaseConversation | DatabaseGuild | DatabaseMessage | DatabaseImage | DatabaseSubscriptionKey;
+type DatabaseAll = DatabaseUser | DatabaseConversation | DatabaseGuild | DatabaseMessage | DatabaseImage | DatabaseSubscriptionKey
 
 export type DatabaseCollectionType = "users" | "conversations" | "guilds" | "interactions" | "images" | "keys"
 
-/* How long to cache entries for */
-const DB_CACHE_DURATION: number = 1 * 60 * 60 * 1000;
-
 /* How often to save cached entries to the database */
-const DB_CACHE_INTERVAL: number = 5 * 1000;
+const DB_CACHE_INTERVAL: number = 60 * 1000;
 
 export class UserManager {
     private readonly db: DatabaseManager;
@@ -273,7 +283,7 @@ export class UserManager {
         if (error !== null) throw new GPTDatabaseError({ collection: type, raw: error });
         if (data === null || data.length === 0) return null;
 
-        return converter ? await converter(data as V) : data as U;
+        return converter ? await converter(data[0] as V) : data as U;
     }
 
     private async createFromCacheOrDatabase<T extends string, U extends DatabaseAll | Partial<DatabaseAll>, V>(
@@ -292,65 +302,73 @@ export class UserManager {
         return template;
     }
 
+
+    /**
+     * Users
+     */
+
     private userTemplate(user: User): DatabaseUser {
         return {
             id: user.id,
             created: Date.now(),
             infractions: [],
-            interactions: 0,
+            interactions: {
+                commands: 0,
+                messages: 0,
+                images: 0
+            },
             moderator: this.db.bot.app.config.discord.owner.includes(user.id),
             terms: null,
             subscription: null,
             testerGroup: this.db.bot.app.config.discord.owner.includes(user.id) ? UserTestingGroup.Priority : UserTestingGroup.None,
-            metadata: null
+            metadata: null,
+            voted: false
         };
     }
 
-    private rawToUser(raw: RawDatabaseUser): DatabaseUser {
-        return {
+    private async rawToUser(raw: RawDatabaseUser): Promise<DatabaseUser> {
+        const db: DatabaseUser =  {
             created: Date.parse(raw.created),
             id: raw.id,
             interactions: raw.interactions,
             infractions: raw.infractions,
             moderator: raw.moderator,
-            subscription: raw.subscription,
+            subscription: raw.subscription ?? null,
             terms: raw.terms !== null ? raw.terms : null,
             testerGroup: raw.testerGroup,
-            metadata: null
+            metadata: raw.metadata,
+            voted: raw.voted
         };
-    }
+    
+        /* Check if the user's subscription is still valid. */
+        db.subscription = this.subscription(db);
 
-    public async getImage(id: string): Promise<DatabaseImage | null> {
-        return this.fetchFromCacheOrDatabase("images", id);
+        return db;
     }
 
     public async getUser(user: User): Promise<DatabaseUser | null> {
         return this.fetchFromCacheOrDatabase<User, DatabaseUser, RawDatabaseUser>(
-            "users", user,
-
-            async raw => {
-                const converted = this.rawToUser(raw);
-                converted.subscription = await this.subscription(converted);
-
-                return converted;
-            }
+            "users", user, raw => this.rawToUser(raw)
         );
     }
 
     public async fetchUser(user: User): Promise<DatabaseUser> {
         return this.createFromCacheOrDatabase<string, DatabaseUser, RawDatabaseUser>(
             "users", user.id,
-            () => this.userTemplate(user),
 
-            async raw => {
-                const converted = this.rawToUser(raw);
-                converted.subscription = await this.subscription(converted);
-
-                return converted;
-            }
+            ()  => this.userTemplate(user),
+            raw => this.rawToUser(raw)
         );
     }
 
+    /**
+     * Users
+     */
+
+
+    /**
+     * Guilds
+     */
 
     private guildTemplate(guild: Guild): DatabaseGuild {
         return {
@@ -360,40 +378,37 @@ export class UserManager {
         };
     }
 
-    private rawToGuild(guild: RawDatabaseGuild): DatabaseGuild {
-        return {
+    private async rawToGuild(guild: RawDatabaseGuild): Promise<DatabaseGuild> {
+        const db: DatabaseGuild = {
             created: Date.parse(guild.created),
             id: guild.id,
-            subscription: guild.subscription
+            subscription: guild.subscription ?? null
         };
+
+        /* Check if the guild's subscription is still valid. */
+        db.subscription = this.subscription(db);
+
+        return db;
     }
 
     public async getGuild(guild: Guild): Promise<DatabaseGuild | null> {
         return this.fetchFromCacheOrDatabase<Guild, DatabaseGuild, RawDatabaseGuild>(
-            "guilds", guild,
-
-            async raw => {
-                const converted = this.rawToGuild(raw);
-                converted.subscription = await this.subscription(converted);
-
-                return converted;
-            }
+            "guilds", guild, raw => this.rawToGuild(raw)
         );
     }
 
     public async fetchGuild(guild: Guild): Promise<DatabaseGuild> {
         return this.createFromCacheOrDatabase<string, DatabaseGuild, RawDatabaseGuild>(
             "guilds", guild.id,
+
             () => this.guildTemplate(guild),
-
-            async raw => {
-                const converted = this.rawToGuild(raw);
-                converted.subscription = await this.subscription(converted);
-
-                return converted;
-            }
+            raw => this.rawToGuild(raw)
         );
     }
+
+    /**
+     * Guilds
+     */
 
 
     public async fetchData(user: User, guild: Guild | null | undefined): Promise<DatabaseInfo> {
@@ -402,6 +417,20 @@ export class UserManager {
             guild: guild ? await this.fetchGuild(guild) : null
         };
     }
+
+
+    /**
+     * Images
+     */
+
+    public async getImage(id: string): Promise<DatabaseImage | null> {
+        return this.fetchFromCacheOrDatabase("images", id);
+    }
+
+    /**
+     * Images
+     */
+
 
     /**
      * Check whether the specified database user is banned.
@@ -472,8 +501,7 @@ export class UserManager {
             i => marked.find(m => m.when === i.when) !== undefined ? { ...i, seen: true } : i
         );
 
-        /* Update the user cache too. */
-        await this.updateUser(user, { infractions: arr });
+        return this.updateUser(user, { infractions: arr });
     }
 
     public unread(user: DatabaseUser): DatabaseUserInfraction[] {
@@ -484,11 +512,11 @@ export class UserManager {
      * Increment the user's amount of interactions with the bot.
      * @param user User to increment interaction count for
      */
-    public async incrementInteractions(user: DatabaseUser): Promise<void> {
-        const updated: number = user.interactions + 1;
+    public async incrementInteractions(user: DatabaseUser, key: keyof DatabaseInteractionStatistics): Promise<void> {
+        const updated: DatabaseInteractionStatistics = user.interactions;
+        updated[key] = updated[key] + 1;
 
-        /* Update the user cache too. */
-        await this.updateUser(user, { interactions: updated });
+        return this.updateUser(user, { interactions: updated });
     }
 
     public async updateModeratorStatus(user: DatabaseUser, status: boolean): Promise<void> {
@@ -504,10 +532,11 @@ export class UserManager {
         return "👤";
     }
 
-    public subscriptionType({ user, guild }: DatabaseInfo): "UserPremium" | "GuildPremium" | "Free" {
+    public subscriptionType({ user, guild }: DatabaseInfo): "UserPremium" | "GuildPremium" | "Free" | "Voter" {
         if (user.subscription !== null) return "UserPremium";
         if (guild && guild.subscription !== null) return "GuildPremium";
 
+        if (user.voted) return "Voter";
         return "Free";
     }
 
@@ -521,7 +550,7 @@ export class UserManager {
      * 
      * @returns User/guild's current subscription, if available
      */
-    private async subscription<T extends DatabaseGuildSubscription | DatabaseSubscription>(db: DatabaseUser | DatabaseGuild): Promise<T | null> {
+    private subscription<T extends DatabaseGuildSubscription | DatabaseSubscription>(db: DatabaseUser | DatabaseGuild): T | null {
         if (db.subscription === null) return null;
         if (db.subscription !== null && Date.now() > db.subscription.expires) return null;
 
@@ -645,16 +674,16 @@ export class UserManager {
         };
     }
 
-    public async setCache(type: DatabaseCollectionType, obj: DatabaseAll | Snowflake, updates: Partial<DatabaseAll> | DatabaseAll = {}, duration: number = DB_CACHE_DURATION): Promise<void> {
+    public async setCache<T extends DatabaseAll = DatabaseAll>(type: DatabaseCollectionType, obj: T | Snowflake, updates: Partial<T> | T = {}): Promise<void> {
         const id: string = typeof obj === "string" ? obj : obj.id;
 
-        let updated: DatabaseAll;
-        const existing: DatabaseAll | null = await this.db.cache.get(type,id) ?? null;
+        let updated: T;
+        const existing: T | null = await this.db.cache.get(type, id) ?? null;
 
-        if (typeof obj === "string") updated = updates as DatabaseAll;
-        else updated = { ...existing !== null ? existing : obj, ...updates as DatabaseAll };
+        if (typeof obj === "string") updated = updates as T;
+        else updated = { ...existing !== null ? existing : obj, ...updates as T };
 
-        await this.db.cache.set(type, id, updated as any);
+        await this.db.cache.set(type, id, updated);
     }
 
     public async setUserCache(user: DatabaseUser | Snowflake, updates?: Partial<DatabaseUser> | DatabaseUser): Promise<void> {
@@ -670,7 +699,7 @@ export class UserManager {
     }
 
     public async setImageCache(image: DatabaseImage, updates?: Partial<DatabaseImage> | DatabaseImage): Promise<void> {
-        return this.setCache("images", image, updates, Math.floor(DB_CACHE_DURATION / 2));
+        return this.setCache("images", image, updates);
     }
 
     private async update(type: keyof typeof this.updates, obj: DatabaseAll | Snowflake, updates: Partial<DatabaseAll> | DatabaseAll): Promise<void> {

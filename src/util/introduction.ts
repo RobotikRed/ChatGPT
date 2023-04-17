@@ -129,40 +129,6 @@ export const IntroductionPages: IntroductionPage[] = [
                     value: `Something that even **OpenAI** doesn't offer yet; with **Premium** almost all available models will be able to **understand** & **view** images you attach to your messages!`
                 }
             ])
-    },
-
-    {
-        index: 4,
-        design: { title: "Usage policies", emoji: "📜", description: "Make sure to follow these rules when using the bot" },
-
-        build: (builder, { bot }) => builder
-            .setDescription(`Since ${bot.client.user!.username} is a **public** Discord bot, we set some common etiquette for you to follow when using the bot.\n\nWe have a warning & ban system in place, and may make use of it without any prior warning.\nIt is up to our moderators to decide when an action should be taken.`)
-            .addFields([
-                {
-                    name: "No NSFW content",
-                    value: "The chat feature is not meant for NSFW content; trying to bypass the filters or asking the bot for any kind of inappropriate content will result in a a warning or ban.\nAlthough, the \`/imagine generate\` feature *can* be used for NSFW content, if used in a channel marked as NSFW."
-                },
-
-                {
-                    name: "No racist, sexist, homophobic & discriminatory content",
-                    value: `This should be obvious: do not use the bot to spell out any racial slurs, or to generate any inappropriate messages containing racist, sexist, homophobic & discriminatory content.\nSame goes for your messages, racial slurs should be avoided when interacting with a chat bot. If this rule is violated, you may be banned without any further notice.`
-                },
-                
-                {
-                    name: "No predatory content",
-                    value: "Do not use the bot (both for the chat feature and `/imagine generate`) for any kind of content involving children or underage characters. We will be reporting such messages to Discord, and act with a permanent ban from the bot."
-                },
-
-                {
-                    name: "Common sense",
-                    value: "Before sending a message to the bot that is possibly inappropriate, ask yourself: **would you do this on your own personal account?**"
-                },
-
-                {
-                    name: "Your privacy",
-                    value: "Moderators can only view explictly flagged messages by our automatic filters, otherwise your messages are private and not visible by anyone else. This is done to ensure a safe environment for our users, and to abide by all policies for the APIs we have integrated into the bot."
-                }
-            ])
     }
 ]
 
@@ -196,6 +162,11 @@ export const buildIntroductionPage = async (bot: Bot, author: User, page: Introd
                     .setLabel("Join the support server")
                     .setStyle(ButtonStyle.Link),
 
+                new ButtonBuilder()
+                    .setURL("https://github.com/TuringAI-Team/chatgpt-discord-bot")
+                    .setLabel("GitHub repository")
+                    .setStyle(ButtonStyle.Link),
+                    
                 new ButtonBuilder()
                     .setEmoji("🗑️")
                     .setStyle(ButtonStyle.Danger)

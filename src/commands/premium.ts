@@ -35,19 +35,9 @@ export default class PremiumCommand extends Command {
 		);
     }
 
-    public async run(interaction: CommandInteraction, { user }: DatabaseInfo): CommandResponse {
-		/* If the command wasn't executed on a guild, show an error. */
-		if (!interaction.member) return new Response()
-			.addEmbed(builder => builder
-				.setDescription("You can only redeem your **Premium** subscription key on Discord servers.")
-				.setColor("Red")
-			);
-
+    public async run(interaction: CommandInteraction, { user, guild }: DatabaseInfo): CommandResponse {
 		/* Which sub-command to execute */
 		const action: "info" | "redeem" | "buy" = interaction.options.getSubcommand(true) as "info" | "redeem" | "buy";
-
-		/* User's active subscription, if available */
-		const guild: DatabaseGuild = await this.bot.db.users.fetchGuild(interaction.guild!);
 
 		/* View information about the benefits & perks of a subscription */
 		if (action === "info") {
@@ -87,7 +77,7 @@ export default class PremiumCommand extends Command {
 			const response = new Response()
 				.addEmbed(builder);
 
-			if (guild.subscription !== null) {
+			if (guild && guild.subscription !== null) {
 				/* Fetch the user, who redeemed the Premium key. */
 				const owner: User = await this.bot.client.users.fetch(guild.subscription.by);
 
@@ -103,7 +93,7 @@ export default class PremiumCommand extends Command {
 					.setColor("Purple")
 				);
 
-			if (user.subscription === null && guild.subscription === null) response
+			if (!this.bot.db.users.canUsePremiumFeatures({ user, guild })) response
 				.addEmbed(builder => builder
 					.setDescription(`To buy **Premium**, visit **[our shop](${Utils.shopURL()})** and acquire a **Premium subscription key** there. Then, run **\`/premium redeem\`** with the subscription key you got.`)
 					.setColor("Purple")
@@ -138,6 +128,14 @@ export default class PremiumCommand extends Command {
 			if (db.redeemed !== null) return new Response()
 				.addEmbed(builder => builder
 					.setDescription("The specified subscription key was already redeemed ❌")
+					.setColor("Red")
+				)
+				.setEphemeral(true);
+
+			/* If the command wasn't executed on a guild, show an error. */
+			if (!guild) return new Response()
+				.addEmbed(builder => builder
+					.setDescription("You can only redeem **Premium** server keys on guilds ❌")
 					.setColor("Red")
 				)
 				.setEphemeral(true);

@@ -27,6 +27,7 @@ export enum CommandPrivateType {
 
 export type CommandCooldown = number | {
 	Free: number;
+	Voter: number;
 	GuildPremium: number;
 	UserPremium: number;
 }

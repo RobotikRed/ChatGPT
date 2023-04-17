@@ -9,7 +9,7 @@
 
     "branding": {
         "noticeColor": "This is the color used for most embeds",
-        "color": "#5865F2"
+        "color": "#68BAC9"
     },
 
     "noticeDev": "Whether developer info should be logged",

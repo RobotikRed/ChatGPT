@@ -33,6 +33,8 @@ export const renderIntoSingleImage = async (bot: Bot, options: ImageGenerationOp
     const width: number = options.params.width * perRow;
     const height: number = rows * options.params.height;
 
+    console.log(options, width, height)
+
     /* Merge all of the images together. */
     const data = await mergeImages(images.map((img, index) => {
         const x: number = (index % perRow) * options.params.width;

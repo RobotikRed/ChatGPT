@@ -30,7 +30,6 @@
     "discord-hybrid-sharding": "^2.1.1",
     "discord.js": "^14.8.0",
     "keyv": "^4.5.2",
-    "lexica-api": "^1.0.2",
     "md5": "^2.3.0",
     "merge-images": "^2.0.0",
     "node-fetch": "^3.3.1",

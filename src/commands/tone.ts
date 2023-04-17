@@ -102,7 +102,7 @@ export default class ToneCommand extends Command {
 		/* If the tone is restricted to Premium users, and they aren't subscribed, send them a notice. */
 		if (tone.settings.premium && !this.bot.db.users.canUsePremiumFeatures(db)) return void await new Response()
 			.addEmbed(builder => builder
-				.setDescription(`✨ By buying **Premium**, you will be able to access exclusive personalities, like \`${tone.name} ${tone.emoji.display ?? tone.emoji.fallback}\`.\n**Premium** *also includes further benefits, view \`/premium info\` for more*. ✨`)
+				.setDescription(`✨ By buying **Premium**, you will be able to access exclusive personalities, like \`${tone.name}\` ${tone.emoji.display ?? tone.emoji.fallback}.\n**Premium** *also includes further benefits, view \`/premium info\` for more*. ✨`)
 				.setColor("Orange")
 			)
 			.setEphemeral(true)
@@ -146,7 +146,7 @@ export default class ToneCommand extends Command {
 			/* If the tone is restricted to Premium users, and they aren't subscribed, send them a notice. */
 			if (tone.settings.premium && !this.bot.db.users.canUsePremiumFeatures(db)) return new Response()
 				.addEmbed(builder => builder
-					.setDescription(`✨ By buying **Premium**, you will be able to access exclusive personalities, like \`${tone.name} ${tone.emoji.display ?? tone.emoji.fallback}\`.\n**Premium** *also includes further benefits, view \`/premium info\` for more*. ✨`)
+					.setDescription(`✨ By buying **Premium**, you will be able to access exclusive personalities, like \`${tone.name}\` ${tone.emoji.display ?? tone.emoji.fallback}.\n**Premium** *also includes further benefits, view \`/premium info\` for more*. ✨`)
 					.setColor("Orange")
 				)
 				.setEphemeral(true);

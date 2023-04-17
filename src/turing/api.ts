@@ -15,11 +15,11 @@ export class TuringAPI {
     }
 
     public async getCache(key: string): Promise<string> {
-        const { response }: { response: string } = await this.request(`cache/${key}?key=${encodeURIComponent(key)}`, "GET");
+        const { response }: { response: string } = await this.request(`cache/${key}`, "GET");
         return response;
     }
 
-    private async request<T>(path: TuringAPIPath, method: "GET" | "POST" | "DELETE", data?: { [key: string]: any }, anon: boolean = false): Promise<T> {
+    private async request<T>(path: TuringAPIPath, method: "GET" | "POST" | "DELETE", data?: { [key: string]: any }): Promise<T> {
         /* Make the actual request. */
         const response = await fetch(this.url(path), {
             method,

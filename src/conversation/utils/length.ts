@@ -6,6 +6,7 @@ import { OpenAIChatMessage } from "../../openai/types/chat.js";
 /* Maximum generation length in total,*/
 export const GPT_MAX_CONTEXT_LENGTH = {
     Free: 500,
+    Voter: 500,
     GuildPremium: 725,
     UserPremium: 1100
 }
@@ -13,6 +14,7 @@ export const GPT_MAX_CONTEXT_LENGTH = {
 /* Maximum generation length in total */
 export const GPT_MAX_GENERATION_LENGTH = {
     Free: 300,
+    Voter: 300,
     GuildPremium: 600,
     UserPremium: 1000
 }

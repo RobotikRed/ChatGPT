@@ -55,8 +55,9 @@ const CONVERSATION_ERROR_RETRY_MAX_TRIES: number = 10;
 /* Usual cool-down for interactions in the conversation */
 const CONVERSATION_COOLDOWN = {
 	Free: 1,
-	GuildPremium: 0.4,
-	UserPremium: 0.14
+	Voter: 0.5,
+	GuildPremium: 0.3,
+	UserPremium: 0.125
 }
 
 const CONVERSATION_DEFAULT_COOLDOWN: CooldownModifier = {

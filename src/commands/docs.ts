@@ -51,12 +51,3 @@ class BaseDocumentationCommand extends Command {
 		return buildIntroductionPage(this.bot, interaction.user, this.page, true);
     }
 }
-
-export class PoliciesDocumentationCommand extends BaseDocumentationCommand {
-	constructor(bot: Bot) {
-		super(bot, {
-			name: "policies",
-			page: introductionPageAt(4)
-		});
-	}
-}

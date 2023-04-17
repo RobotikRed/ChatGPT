@@ -816,7 +816,7 @@ export class Generator {
 		/* Try to send the response & generate a nice embed for the message. */
 		try {
 			/* If everything went well, increase the usage for the user too. */
-			await this.bot.db.users.incrementInteractions(db.user);
+			await this.bot.db.users.incrementInteractions(db.user, "messages");
 
 			/* If the output is empty for some reason, set a placeholder message. */
 			if (final.output.text.length === 0) {
